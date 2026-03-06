@@ -38,17 +38,17 @@ export default function GitHubTown() {
   const cameraTarget = useRef(null); // Target building to zoom to
   const isZoomingToBuilding = useRef(false);
   const isWaitingAtDoor = useRef(false); // Camera locked at door, waiting for user
+  const isViewingBuilding = useRef(false); // Camera locked while viewing building info
   const lockedCameraPosition = useRef(null); // Locked camera position when waiting
   const doorButtonRef = useRef(null); // 3D button sprite on the door
   const showEnterPromptRef = useRef(false); // Ref for animation loop to access current value
   const [showEnterPrompt, setShowEnterPrompt] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const [webglError, setWebglError] = useState(false);
+  const activatedInfoSpritesRef = useRef([]); // 3D sprites showing user info on building
 
   // Sync ref with state for animation loop access
   useEffect(() => {
     showEnterPromptRef.current = showEnterPrompt;
-    console.log("🔔 showEnterPrompt state changed to:", showEnterPrompt);
   }, [showEnterPrompt]);
 
   useEffect(() => {
@@ -303,15 +303,13 @@ export default function GitHubTown() {
             cameraTarget.current = clickedBuilding.position.clone();
             isZoomingToBuilding.current = true;
             isWaitingAtDoor.current = false;
+            isViewingBuilding.current = false;
           }
         }
       } else {
         // Close any open building when clicking empty space
         setShowEnterPrompt(false);
-        setShowProfileModal(false);
-        if (selectedBuildingRef.current) {
-          selectedBuildingRef.current.userData.isOpen = false;
-        }
+        handleCloseProfile();
         setSelectedUser(null);
         selectedBuildingRef.current = null;
 
@@ -319,6 +317,7 @@ export default function GitHubTown() {
         cameraTarget.current = null;
         isZoomingToBuilding.current = false;
         isWaitingAtDoor.current = false;
+        isViewingBuilding.current = false;
         lockedCameraPosition.current = null;
       }
     };
@@ -354,15 +353,15 @@ export default function GitHubTown() {
           }
           break;
         case "escape":
-          // Close profile modal and reset camera
-          setShowProfileModal(false);
+          // Close/deactivate building and reset camera
+          handleCloseProfile();
           setShowEnterPrompt(false);
           cameraTarget.current = null;
           isZoomingToBuilding.current = false;
           isWaitingAtDoor.current = false;
+          isViewingBuilding.current = false;
           lockedCameraPosition.current = null;
           if (selectedBuildingRef.current) {
-            selectedBuildingRef.current.userData.isOpen = false;
             selectedBuildingRef.current = null;
           }
           setSelectedUser(null);
@@ -511,12 +510,12 @@ export default function GitHubTown() {
           }
         }
       } else if (
-        isWaitingAtDoor.current &&
+        (isWaitingAtDoor.current || isViewingBuilding.current) &&
         lockedCameraPosition.current &&
         selectedBuildingRef.current
       ) {
-        // Keep camera locked at external view while waiting for button click
-        if (frameCount % 180 === 0) {
+        // Keep camera locked at external view while waiting for button click or viewing building
+        if (frameCount % 180 === 0 && isWaitingAtDoor.current) {
           console.log("🔒 Camera locked, waiting for button click");
         }
         camera.position.copy(lockedCameraPosition.current);
@@ -536,7 +535,11 @@ export default function GitHubTown() {
       }
 
       // Apply camera rotation (only if not zooming to building and not waiting at door)
-      if (!isZoomingToBuilding.current && !isWaitingAtDoor.current) {
+      if (
+        !isZoomingToBuilding.current &&
+        !isWaitingAtDoor.current &&
+        !isViewingBuilding.current
+      ) {
         if (frameCount < 120) {
           // For first 2 seconds, keep camera fixed looking at origin
           camera.lookAt(0, 5, 0);
@@ -557,9 +560,100 @@ export default function GitHubTown() {
 
       // Animate buildings
       buildingsRef.current.forEach((building, index) => {
+        // Light up effect for activated buildings
+        const isActivated = building.userData.isActivated;
+
         if (building.userData.emissiveMaterial) {
-          const pulse = Math.sin(time * 2 + index * 0.5) * 0.3 + 0.7;
-          building.userData.emissiveMaterial.emissiveIntensity = pulse * 0.3;
+          if (isActivated) {
+            // Bright, intense glow when activated
+            const pulse = Math.sin(time * 3) * 0.2 + 0.8;
+            building.userData.emissiveMaterial.emissiveIntensity = pulse * 2.5;
+          } else {
+            // Normal subtle pulse
+            const pulse = Math.sin(time * 2 + index * 0.5) * 0.3 + 0.7;
+            building.userData.emissiveMaterial.emissiveIntensity = pulse * 0.1;
+          }
+        }
+
+        // Increase intensity of all windows when activated, reset when not
+        building.traverse((child) => {
+          if (child.isMesh && child.material && child.material.emissive) {
+            if (isActivated) {
+              const pulse = Math.sin(time * 3) * 0.3 + 1.2;
+              child.material.emissiveIntensity = pulse * 1.0; // Bright windows
+            } else {
+              // Reset to original subtle glow
+              if (!child.userData.originalEmissiveIntensity) {
+                child.userData.originalEmissiveIntensity =
+                  child.material.emissiveIntensity;
+              }
+              child.material.emissiveIntensity =
+                child.userData.originalEmissiveIntensity || 0.4;
+            }
+          }
+        });
+
+        // Animate info sprites with subtle floating and pulsing effects
+        if (isActivated && activatedInfoSpritesRef.current.length > 0) {
+          activatedInfoSpritesRef.current.forEach((sprite, idx) => {
+            // Subtle floating animation with phase offset
+            const floatOffset = Math.sin(time * 1.5 + idx * 0.5) * 0.08;
+            if (!sprite.userData.originalY) {
+              sprite.userData.originalY = sprite.position.y;
+            }
+            sprite.position.y = sprite.userData.originalY + floatOffset;
+
+            // Subtle scale pulse for depth
+            const scalePulse = Math.sin(time * 2 + idx * 0.3) * 0.03 + 1;
+            sprite.scale.x =
+              (sprite.userData.originalScaleX || sprite.scale.x) * scalePulse;
+            sprite.scale.y =
+              (sprite.userData.originalScaleY || sprite.scale.y) * scalePulse;
+
+            // Store original scale
+            if (!sprite.userData.originalScaleX) {
+              sprite.userData.originalScaleX = sprite.scale.x / scalePulse;
+              sprite.userData.originalScaleY = sprite.scale.y / scalePulse;
+            }
+          });
+        }
+
+        // Float animation for selected building
+        const isSelected = selectedBuildingRef.current === building;
+        const targetY = isSelected ? 5 : 0; // Float 5 units up when selected
+        const currentY = building.position.y;
+
+        // Smooth transition to target Y position
+        building.position.y += (targetY - currentY) * 0.05;
+
+        // Fade out non-selected buildings when one is selected
+        if (selectedBuildingRef.current) {
+          const targetOpacity = isSelected ? 1 : 0.2;
+
+          // Apply opacity to all meshes in the building group
+          building.traverse((child) => {
+            if (child.isMesh && child.material) {
+              if (!child.material.transparent) {
+                child.material.transparent = true;
+              }
+              const currentOpacity =
+                child.material.opacity !== undefined
+                  ? child.material.opacity
+                  : 1;
+              child.material.opacity += (targetOpacity - currentOpacity) * 0.05;
+            }
+          });
+        } else {
+          // Reset opacity when no building is selected
+          building.traverse((child) => {
+            if (child.isMesh && child.material) {
+              const currentOpacity =
+                child.material.opacity !== undefined
+                  ? child.material.opacity
+                  : 1;
+              child.material.opacity += (1 - currentOpacity) * 0.05;
+            }
+          });
         }
 
         // Animate selected building (door opening animation)
@@ -662,7 +756,6 @@ export default function GitHubTown() {
   // Update buildings when users change
   useEffect(() => {
     if (!sceneRef.current) {
-      console.log("Scene not ready yet");
       return;
     }
 
@@ -701,6 +794,8 @@ export default function GitHubTown() {
       buildingGroup.position.set(position.x, 0, position.z);
       buildingGroup.userData.user = user;
       buildingGroup.userData.isOpen = false;
+      buildingGroup.userData.isActivated = false;
+      buildingGroup.userData.geometry = geometry; // Store for info display
 
       // Determine building style based on index (variety)
       const buildingType = index % 4; // 0: modern glass, 1: office, 2: residential, 3: classic
@@ -722,13 +817,18 @@ export default function GitHubTown() {
         geometry.depth,
       );
 
-      // More realistic concrete/modern material
+      // More realistic concrete/modern material with emissive for light-up effect
       const buildingMaterial = new THREE.MeshStandardMaterial({
         color: typeColors.main,
         roughness: buildingType === 0 ? 0.2 : 0.8, // Glass buildings are smoother
         metalness: buildingType === 0 ? 0.7 : 0.3,
         envMapIntensity: 1.5,
+        emissive: 0xffaa00, // Bright orange glow
+        emissiveIntensity: 0.05, // Start very subtle
       });
+
+      // Store material reference for animation
+      buildingGroup.userData.emissiveMaterial = buildingMaterial;
 
       const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
       building.position.y = geometry.height / 2;
@@ -1500,41 +1600,237 @@ export default function GitHubTown() {
     }
   }, [newlyAddedUser, users, setNewlyAddedUser]);
 
+  // Create 3D info display on building
+  const createBuildingInfoDisplay = (building) => {
+    if (!building) return;
+
+    const user = building.userData.user;
+    const geometry = building.userData.geometry;
+
+    // Remove old info sprites if any
+    activatedInfoSpritesRef.current.forEach((sprite) => {
+      building.remove(sprite);
+    });
+    activatedInfoSpritesRef.current = [];
+
+    // Create rounded avatar with glow effect
+    const avatarSize = 2.75;
+    const avatarUrl = user.avatar_url || `https://github.com/${user.login}.png`;
+
+    // Load and create rounded avatar
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const avatarCanvas = document.createElement("canvas");
+      const size = 512;
+      avatarCanvas.width = size;
+      avatarCanvas.height = size;
+      const avatarCtx = avatarCanvas.getContext("2d");
+
+      // Create circular clip
+      avatarCtx.beginPath();
+      avatarCtx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+      avatarCtx.closePath();
+      avatarCtx.clip();
+
+      // Draw image
+      avatarCtx.drawImage(img, 0, 0, size, size);
+
+      // Create texture from canvas
+      const avatarTexture = new THREE.CanvasTexture(avatarCanvas);
+      const avatarMaterial = new THREE.SpriteMaterial({
+        map: avatarTexture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const avatarSprite = new THREE.Sprite(avatarMaterial);
+      avatarSprite.position.set(0, geometry.height + 4, geometry.depth / 2 + 1);
+      avatarSprite.scale.set(avatarSize, avatarSize, 1);
+      avatarSprite.renderOrder = 999;
+      building.add(avatarSprite);
+      activatedInfoSpritesRef.current.push(avatarSprite);
+    };
+    img.src = avatarUrl;
+
+    // Create helper function for polished text textures with gradient
+    const createInfoTexture = (
+      text,
+      fontSize = 40,
+      color = "#ffffff",
+      width = 512,
+      height = 128,
+    ) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+
+      // Gradient background for depth
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, "rgba(20, 20, 40, 0.95)");
+      gradient.addColorStop(1, "rgba(10, 10, 30, 0.95)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      // Subtle border glow
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.6;
+      ctx.strokeRect(4, 4, width - 8, height - 8);
+      ctx.globalAlpha = 1;
+
+      // Text with shadow for depth
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = color;
+      ctx.font = `bold ${fontSize}px 'Segoe UI', Arial, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, width / 2, height / 2);
+
+      return new THREE.CanvasTexture(canvas);
+    };
+
+    // Username display
+    const nameTexture = createInfoTexture(
+      user.login.toUpperCase(),
+      55,
+      "#00d9ff",
+      640,
+      120,
+    );
+    const nameMaterial = new THREE.SpriteMaterial({
+      map: nameTexture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const nameSprite = new THREE.Sprite(nameMaterial);
+    nameSprite.position.set(0, geometry.height + 1.5, geometry.depth / 2 + 1);
+    nameSprite.scale.set(6.5, 1.2, 1);
+    nameSprite.renderOrder = 999;
+    building.add(nameSprite);
+    activatedInfoSpritesRef.current.push(nameSprite);
+
+    // Stats in column layout
+    const stats = [
+      {
+        label: "REPOS",
+        value: user.public_repos || 0,
+        color: "#3b82f6",
+        x: 0,
+        y: 3.2,
+      },
+      {
+        label: "FOLLOWERS",
+        value: user.followers || 0,
+        color: "#10b981",
+        x: 0,
+        y: 1.2,
+      },
+      {
+        label: "FOLLOWING",
+        value: user.following || 0,
+        color: "#8b5cf6",
+        x: 0,
+        y: -0.8,
+      },
+      {
+        label: "GISTS",
+        value: user.public_gists || 0,
+        color: "#f59e0b",
+        x: 0,
+        y: -2.8,
+      },
+    ];
+
+    stats.forEach((stat) => {
+      // Create stat card
+      const statTexture = createInfoTexture(
+        `${stat.value}`,
+        90,
+        stat.color,
+        320,
+        150,
+      );
+      const statMaterial = new THREE.SpriteMaterial({
+        map: statTexture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const statSprite = new THREE.Sprite(statMaterial);
+      statSprite.position.set(
+        stat.x,
+        geometry.height * 0.5 + stat.y,
+        geometry.depth / 2 + 0.8,
+      );
+      statSprite.scale.set(3.8, 1.5, 1);
+      statSprite.renderOrder = 999;
+      building.add(statSprite);
+      activatedInfoSpritesRef.current.push(statSprite);
+
+      // Add label below number
+      const labelTexture = createInfoTexture(
+        stat.label,
+        36,
+        stat.color,
+        320,
+        70,
+      );
+      const labelMaterial = new THREE.SpriteMaterial({
+        map: labelTexture,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const labelSprite = new THREE.Sprite(labelMaterial);
+      labelSprite.position.set(
+        stat.x,
+        geometry.height * 0.5 + stat.y - 1.0,
+        geometry.depth / 2 + 0.8,
+      );
+      labelSprite.scale.set(2.5, 0.6, 1);
+      labelSprite.renderOrder = 999;
+      building.add(labelSprite);
+      activatedInfoSpritesRef.current.push(labelSprite);
+    });
+  };
+
+  // Handle closing/deactivating building
+  const handleCloseProfile = () => {
+    if (selectedBuildingRef.current) {
+      selectedBuildingRef.current.userData.isOpen = false;
+      selectedBuildingRef.current.userData.isActivated = false;
+
+      // Remove info sprites
+      activatedInfoSpritesRef.current.forEach((sprite) => {
+        selectedBuildingRef.current.remove(sprite);
+      });
+      activatedInfoSpritesRef.current = [];
+    }
+    // Unlock camera
+    isViewingBuilding.current = false;
+  };
+
   // Handle entering building when door button is clicked
   const handleEnterBuilding = () => {
-    console.log("🚪 ENTER BUILDING CLICKED!");
-
     if (selectedBuildingRef.current && showEnterPromptRef.current) {
-      console.log("✓ Opening door and showing profile...");
-
-      // Open door animation
+      // Open door and activate building (lights turn on)
       selectedBuildingRef.current.userData.isOpen = true;
+      selectedBuildingRef.current.userData.isActivated = true;
 
       // Hide the enter button
       setShowEnterPrompt(false);
 
-      // Show profile modal
-      setShowProfileModal(true);
+      // Create 3D info display on the building
+      createBuildingInfoDisplay(selectedBuildingRef.current);
 
-      // Clear locked state
+      // Switch from waiting at door to viewing building (keep camera locked)
       isWaitingAtDoor.current = false;
-      lockedCameraPosition.current = null;
-    } else {
-      console.log("❌ Cannot enter:", {
-        hasBuilding: !!selectedBuildingRef.current,
-        showPromptRef: showEnterPromptRef.current,
-        showPromptState: showEnterPrompt,
-      });
-    }
-  };
-
-  // Handle closing profile modal
-  const handleCloseProfile = () => {
-    setShowProfileModal(false);
-
-    // Close door
-    if (selectedBuildingRef.current) {
-      selectedBuildingRef.current.userData.isOpen = false;
+      isViewingBuilding.current = true;
+      // Keep lockedCameraPosition.current as is - don't clear it
     }
   };
 
@@ -1546,149 +1842,6 @@ export default function GitHubTown() {
         style={{ display: "block", touchAction: "none" }}
       />
       <SearchBar />
-
-      {/* GitHub Profile Modal */}
-      {showProfileModal && selectedBuildingRef.current && (
-        <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/70 backdrop-blur-sm">
-          <div className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl shadow-2xl border-2 border-cyan-500/30 p-4 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto animate-fadeIn">
-            {/* Close button */}
-            <button
-              onClick={handleCloseProfile}
-              className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors z-10"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-
-            {(() => {
-              const user = selectedBuildingRef.current.userData.user;
-              return (
-                <>
-                  {/* Header with Avatar and Basic Info */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <img
-                      src={
-                        user.avatar_url ||
-                        `https://github.com/${user.login}.png`
-                      }
-                      alt={user.login}
-                      className="w-20 h-20 rounded-full border-3 border-cyan-500 shadow-lg flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h2 className="text-2xl font-bold text-white mb-1 truncate">
-                        {user.name || user.login}
-                      </h2>
-                      <p className="text-base text-cyan-400 mb-2 truncate">
-                        @{user.login}
-                      </p>
-                      {user.bio && (
-                        <p className="text-sm text-slate-300 mb-2 line-clamp-2">
-                          {user.bio}
-                        </p>
-                      )}
-                      <div className="flex flex-wrap gap-2 text-xs text-slate-400">
-                        {user.company && (
-                          <span className="flex items-center gap-1">
-                            <svg
-                              className="w-3 h-3"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4z" />
-                            </svg>
-                            {user.company}
-                          </span>
-                        )}
-                        {user.location && (
-                          <span className="flex items-center gap-1">
-                            <svg
-                              className="w-3 h-3"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                            {user.location}
-                          </span>
-                        )}
-                        {user.created_at && (
-                          <span className="flex items-center gap-1">
-                            <svg
-                              className="w-3 h-3"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                            Joined {new Date(user.created_at).getFullYear()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
-                      <div className="text-xl font-bold text-blue-400 mb-0.5">
-                        {user.public_repos || 0}
-                      </div>
-                      <div className="text-xs text-slate-400">Repos</div>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
-                      <div className="text-xl font-bold text-green-400 mb-0.5">
-                        {user.followers || 0}
-                      </div>
-                      <div className="text-xs text-slate-400">Followers</div>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
-                      <div className="text-xl font-bold text-purple-400 mb-0.5">
-                        {user.following || 0}
-                      </div>
-                      <div className="text-xs text-slate-400">Following</div>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
-                      <div className="text-xl font-bold text-yellow-400 mb-0.5">
-                        {user.public_gists || 0}
-                      </div>
-                      <div className="text-xs text-slate-400">Gists</div>
-                    </div>
-                  </div>
-
-                  {/* Action Button */}
-                  <a
-                    href={`https://github.com/${user.login}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-semibold py-2.5 px-4 rounded-lg text-center text-sm transition-all duration-300 shadow-lg hover:shadow-cyan-500/50"
-                  >
-                    View Full Profile on GitHub →
-                  </a>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
 
       {/* Loading indicator */}
       {loading && (
