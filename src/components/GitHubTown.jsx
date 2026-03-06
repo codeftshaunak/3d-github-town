@@ -31,48 +31,67 @@ export default function GitHubTown() {
   const cameraDistance = useRef(50);
   const cameraTarget = useRef(null); // Target building to zoom to
   const isZoomingToBuilding = useRef(false);
+  const [webglError, setWebglError] = useState(false);
 
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Scene setup
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb); // Sky blue
-    scene.fog = new THREE.Fog(0x87ceeb, 100, 400); // Atmospheric fog
-    sceneRef.current = scene;
-    console.log("Scene created");
+    // Check for WebGL support
+    const canvas = document.createElement("canvas");
+    const gl =
+      canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+    if (!gl) {
+      console.error("WebGL is not supported in this browser/environment");
+      setWebglError(true);
+      return;
+    }
 
-    // Camera setup
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      2000,
-    );
-    camera.position.set(0, 30, 50);
-    camera.lookAt(0, 0, 0);
-    cameraRef.current = camera;
+    try {
+      // Scene setup
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb); // Sky blue
+      scene.fog = new THREE.Fog(0x87ceeb, 100, 400); // Atmospheric fog
+      sceneRef.current = scene;
+      console.log("Scene created");
 
-    console.log("Scene initialized, camera at:", camera.position);
-    console.log("Camera looking at origin (0, 0, 0)");
+      // Camera setup
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        2000,
+      );
+      camera.position.set(0, 30, 50);
+      camera.lookAt(0, 0, 0);
+      cameraRef.current = camera;
 
-    // Renderer setup
-    const renderer = new THREE.WebGLRenderer({
-      canvas: canvasRef.current,
-      antialias: true,
-      alpha: false,
-    });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
-    rendererRef.current = renderer;
+      console.log("Scene initialized, camera at:", camera.position);
+      console.log("Camera looking at origin (0, 0, 0)");
 
-    console.log("Renderer initialized:", {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      pixelRatio: renderer.getPixelRatio(),
-    });
+      // Renderer setup with error handling
+      const renderer = new THREE.WebGLRenderer({
+        canvas: canvasRef.current,
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance",
+        failIfMajorPerformanceCaveat: false,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      rendererRef.current = renderer;
+
+      console.log("Renderer initialized:", {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        pixelRatio: renderer.getPixelRatio(),
+      });
+    } catch (error) {
+      console.error("Error initializing WebGL renderer:", error);
+      setWebglError(true);
+      return;
+    }
 
     // Lighting - more realistic sunlight
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -1156,6 +1175,55 @@ export default function GitHubTown() {
             <p className="text-slate-400 text-sm mt-2">
               Fetching {users.length} buildings
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* WebGL Error */}
+      {webglError && (
+        <div className="absolute inset-0 flex items-center justify-center z-40 bg-slate-900/95">
+          <div className="max-w-md text-center p-8 bg-slate-800 border-2 border-red-500 rounded-lg">
+            <div className="mb-4">
+              <svg
+                className="w-16 h-16 text-red-500 mx-auto"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-red-400 mb-4">
+              WebGL Not Available
+            </h2>
+            <p className="text-slate-300 mb-4">
+              Your browser or hosting environment doesn't support WebGL, which
+              is required for 3D graphics.
+            </p>
+            <div className="text-left text-slate-400 text-sm space-y-2 mb-6">
+              <p className="font-semibold text-slate-300">
+                Possible solutions:
+              </p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Enable hardware acceleration in your browser settings</li>
+                <li>Try a different browser (Chrome, Firefox, Edge)</li>
+                <li>Update your graphics drivers</li>
+                <li>Use a device with better graphics support</li>
+              </ul>
+            </div>
+            <a
+              href="https://get.webgl.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition-colors"
+            >
+              Check WebGL Support
+            </a>
           </div>
         </div>
       )}
