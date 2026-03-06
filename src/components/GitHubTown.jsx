@@ -13,7 +13,6 @@ import {
   createCars,
 } from "../utils/cityElements";
 import SearchBar from "./SearchBar";
-import UserInfoPanel from "./UserInfoPanel";
 
 export default function GitHubTown() {
   const canvasRef = useRef(null);
@@ -38,7 +37,19 @@ export default function GitHubTown() {
   const cameraDistance = useRef(50);
   const cameraTarget = useRef(null); // Target building to zoom to
   const isZoomingToBuilding = useRef(false);
+  const isWaitingAtDoor = useRef(false); // Camera locked at door, waiting for user
+  const lockedCameraPosition = useRef(null); // Locked camera position when waiting
+  const doorButtonRef = useRef(null); // 3D button sprite on the door
+  const showEnterPromptRef = useRef(false); // Ref for animation loop to access current value
+  const [showEnterPrompt, setShowEnterPrompt] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [webglError, setWebglError] = useState(false);
+
+  // Sync ref with state for animation loop access
+  useEffect(() => {
+    showEnterPromptRef.current = showEnterPrompt;
+    console.log("🔔 showEnterPrompt state changed to:", showEnterPrompt);
+  }, [showEnterPrompt]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -58,8 +69,8 @@ export default function GitHubTown() {
     try {
       // Scene setup
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x87ceeb); // Sky blue
-      scene.fog = new THREE.Fog(0x87ceeb, 100, 400); // Atmospheric fog
+      scene.background = new THREE.Color(0x0a0a15); // Dark night sky
+      scene.fog = new THREE.Fog(0x0a0a15, 100, 400); // Dark atmospheric fog
       sceneRef.current = scene;
       console.log("Scene created");
 
@@ -102,13 +113,13 @@ export default function GitHubTown() {
       return;
     }
 
-    // Lighting - more realistic sunlight
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    // Lighting - moonlight and city lights
+    const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
     scene.add(ambientLight);
     console.log("Ambient light added");
 
-    // Main sunlight
-    const mainLight = new THREE.DirectionalLight(0xfff8dc, 1.2);
+    // Main moonlight
+    const mainLight = new THREE.DirectionalLight(0xaaccff, 0.8);
     mainLight.position.set(50, 80, 40);
     mainLight.castShadow = true;
     mainLight.shadow.camera.left = -100;
@@ -120,12 +131,12 @@ export default function GitHubTown() {
     scene.add(mainLight);
     console.log("Directional light added");
 
-    // Fill light (sky light)
-    const fillLight1 = new THREE.HemisphereLight(0x87ceeb, 0x444444, 0.6);
+    // Fill light (night sky light)
+    const fillLight1 = new THREE.HemisphereLight(0x1a1a2e, 0x0a0a15, 0.4);
     scene.add(fillLight1);
 
-    // Warm evening light
-    const fillLight2 = new THREE.DirectionalLight(0xffaa66, 0.4);
+    // Warm city light glow
+    const fillLight2 = new THREE.DirectionalLight(0xff9966, 0.3);
     fillLight2.position.set(-50, 30, -50);
     scene.add(fillLight2);
 
@@ -175,6 +186,63 @@ export default function GitHubTown() {
     createBenches(scene);
     createCars(scene);
 
+    // Create 3D door enter button sprite
+    const createDoorButton = () => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      canvas.width = 512;
+      canvas.height = 256;
+
+      // Glow effect
+      context.shadowColor = "#00ffff";
+      context.shadowBlur = 30;
+      context.shadowOffsetX = 0;
+      context.shadowOffsetY = 0;
+
+      // Gradient background
+      const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, "#3b82f6");
+      gradient.addColorStop(0.5, "#06b6d4");
+      gradient.addColorStop(1, "#3b82f6");
+      context.fillStyle = gradient;
+      context.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 20);
+      context.fill();
+
+      // Border with glow
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 6;
+      context.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 20);
+      context.stroke();
+
+      // Reset shadow for text
+      context.shadowBlur = 10;
+
+      // Text
+      context.font = "bold 60px Arial";
+      context.fillStyle = "#ffffff";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("🚪 ENTER", canvas.width / 2, canvas.height / 2 - 10);
+
+      context.font = "bold 28px Arial";
+      context.fillText("Click Here", canvas.width / 2, canvas.height / 2 + 45);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: true,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(8, 4, 1); // Larger button
+      sprite.visible = false;
+      sprite.userData.isDoorButton = true; // Mark it as clickable
+      scene.add(sprite);
+      doorButtonRef.current = sprite;
+    };
+
+    createDoorButton();
+
     // Raycaster for click detection
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
@@ -184,6 +252,27 @@ export default function GitHubTown() {
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
+
+      // Check if door button was clicked
+      if (doorButtonRef.current && doorButtonRef.current.visible) {
+        console.log("🔍 Checking door button for click...");
+        const buttonIntersects = raycaster.intersectObject(
+          doorButtonRef.current,
+        );
+        if (buttonIntersects.length > 0) {
+          console.log(
+            "✅ Door button clicked! Intersections:",
+            buttonIntersects.length,
+          );
+          // Door button clicked - enter building
+          handleEnterBuilding();
+          return;
+        } else {
+          console.log("❌ No button intersection");
+        }
+      }
+
+      // Check for building click
       const intersects = raycaster.intersectObjects(buildingsRef.current, true);
 
       if (intersects.length > 0) {
@@ -193,24 +282,33 @@ export default function GitHubTown() {
           clickedBuilding = clickedBuilding.parent;
         }
         if (clickedBuilding.userData.user) {
-          // Close previously selected building
+          // First click - show enter prompt
           if (
-            selectedBuildingRef.current &&
+            !showEnterPrompt ||
             selectedBuildingRef.current !== clickedBuilding
           ) {
-            selectedBuildingRef.current.userData.isOpen = false;
-          }
-          // Toggle current building
-          clickedBuilding.userData.isOpen = !clickedBuilding.userData.isOpen;
-          selectedBuildingRef.current = clickedBuilding;
-          setSelectedUser(clickedBuilding.userData.user);
+            // Close previously selected building
+            if (
+              selectedBuildingRef.current &&
+              selectedBuildingRef.current !== clickedBuilding
+            ) {
+              selectedBuildingRef.current.userData.isOpen = false;
+            }
 
-          // Set camera target to zoom to this building
-          cameraTarget.current = clickedBuilding.position.clone();
-          isZoomingToBuilding.current = true;
+            selectedBuildingRef.current = clickedBuilding;
+            setSelectedUser(clickedBuilding.userData.user);
+            setShowEnterPrompt(false);
+
+            // Zoom to building entrance
+            cameraTarget.current = clickedBuilding.position.clone();
+            isZoomingToBuilding.current = true;
+            isWaitingAtDoor.current = false;
+          }
         }
       } else {
         // Close any open building when clicking empty space
+        setShowEnterPrompt(false);
+        setShowProfileModal(false);
         if (selectedBuildingRef.current) {
           selectedBuildingRef.current.userData.isOpen = false;
         }
@@ -220,6 +318,8 @@ export default function GitHubTown() {
         // Reset camera target
         cameraTarget.current = null;
         isZoomingToBuilding.current = false;
+        isWaitingAtDoor.current = false;
+        lockedCameraPosition.current = null;
       }
     };
 
@@ -240,6 +340,7 @@ export default function GitHubTown() {
         case "d":
           setControls((c) => ({ ...c, right: true }));
           break;
+
         case "z":
           // Zoom to last building in the list
           if (buildingsRef.current.length > 0) {
@@ -253,9 +354,13 @@ export default function GitHubTown() {
           }
           break;
         case "escape":
-          // Reset camera and deselect building
+          // Close profile modal and reset camera
+          setShowProfileModal(false);
+          setShowEnterPrompt(false);
           cameraTarget.current = null;
           isZoomingToBuilding.current = false;
+          isWaitingAtDoor.current = false;
+          lockedCameraPosition.current = null;
           if (selectedBuildingRef.current) {
             selectedBuildingRef.current.userData.isOpen = false;
             selectedBuildingRef.current = null;
@@ -374,19 +479,17 @@ export default function GitHubTown() {
         cameraVelocity.current.z *= 0.9;
       }
 
-      // Smooth camera zoom to building or normal movement
+      // Smooth camera zoom to building
       if (isZoomingToBuilding.current && cameraTarget.current) {
-        // Calculate target camera position (offset from building)
+        // Zoom to building external view
         const targetPos = new THREE.Vector3(
           cameraTarget.current.x,
           cameraTarget.current.y + 15,
           cameraTarget.current.z + 25,
         );
 
-        // Smooth lerp to target
         camera.position.lerp(targetPos, 0.05);
 
-        // Look at the building
         const lookAtTarget = new THREE.Vector3(
           cameraTarget.current.x,
           cameraTarget.current.y + 10,
@@ -394,10 +497,35 @@ export default function GitHubTown() {
         );
         camera.lookAt(lookAtTarget);
 
-        // Stop zooming when close enough
         if (camera.position.distanceTo(targetPos) < 1) {
-          isZoomingToBuilding.current = false;
+          if (!isWaitingAtDoor.current) {
+            console.log("✓ External zoom complete!");
+            isZoomingToBuilding.current = false;
+            // Show enter button after zoom completes and lock camera
+            if (selectedBuildingRef.current && !showEnterPromptRef.current) {
+              console.log("🎯 Showing enter button and locking camera");
+              setShowEnterPrompt(true);
+              isWaitingAtDoor.current = true;
+              lockedCameraPosition.current = targetPos.clone(); // Lock camera at this position
+            }
+          }
         }
+      } else if (
+        isWaitingAtDoor.current &&
+        lockedCameraPosition.current &&
+        selectedBuildingRef.current
+      ) {
+        // Keep camera locked at external view while waiting for button click
+        if (frameCount % 180 === 0) {
+          console.log("🔒 Camera locked, waiting for button click");
+        }
+        camera.position.copy(lockedCameraPosition.current);
+        const lookAtTarget = new THREE.Vector3(
+          selectedBuildingRef.current.position.x,
+          selectedBuildingRef.current.position.y + 10,
+          selectedBuildingRef.current.position.z,
+        );
+        camera.lookAt(lookAtTarget);
       } else {
         // Normal camera movement
         camera.position.x += cameraVelocity.current.x;
@@ -407,8 +535,8 @@ export default function GitHubTown() {
         camera.position.y = cameraDistance.current * 0.6;
       }
 
-      // Apply camera rotation (only if not zooming to building)
-      if (!isZoomingToBuilding.current) {
+      // Apply camera rotation (only if not zooming to building and not waiting at door)
+      if (!isZoomingToBuilding.current && !isWaitingAtDoor.current) {
         if (frameCount < 120) {
           // For first 2 seconds, keep camera fixed looking at origin
           camera.lookAt(0, 5, 0);
@@ -434,22 +562,19 @@ export default function GitHubTown() {
           building.userData.emissiveMaterial.emissiveIntensity = pulse * 0.3;
         }
 
-        // Animate selected building (open/close)
+        // Animate selected building (door opening animation)
         if (building.userData.isOpen) {
-          building.rotation.y += 0.01;
-          building.scale.lerp(new THREE.Vector3(1.3, 1.3, 1.3), 0.1);
+          // Don't rotate/scale the building when entering, just open the door
           if (building.userData.door) {
             building.userData.door.rotation.y = Math.min(
-              building.userData.door.rotation.y + 0.05,
-              Math.PI / 2,
+              building.userData.door.rotation.y + 0.08,
+              Math.PI / 1.5, // Open wider for entering
             );
           }
         } else {
-          building.rotation.y *= 0.95;
-          building.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
           if (building.userData.door) {
             building.userData.door.rotation.y = Math.max(
-              building.userData.door.rotation.y - 0.05,
+              building.userData.door.rotation.y - 0.08,
               0,
             );
           }
@@ -460,6 +585,49 @@ export default function GitHubTown() {
       labelsRef.current.forEach((label) => {
         label.lookAt(camera.position);
       });
+
+      // Update door button position
+      if (
+        doorButtonRef.current &&
+        selectedBuildingRef.current &&
+        showEnterPromptRef.current
+      ) {
+        const building = selectedBuildingRef.current;
+        const doorHeight = building.userData.geometry.height / 2;
+        // Position button centered on the door, slightly in front
+        doorButtonRef.current.position.set(
+          building.position.x,
+          building.position.y + doorHeight / 2 + 1,
+          building.position.z + building.userData.geometry.depth / 2 + 2,
+        );
+        doorButtonRef.current.lookAt(camera.position);
+
+        const wasVisible = doorButtonRef.current.visible;
+        doorButtonRef.current.visible = true;
+
+        // Log when button becomes visible
+        if (!wasVisible && doorButtonRef.current.visible) {
+          console.log(
+            "🟢 DOOR BUTTON IS NOW VISIBLE at position:",
+            doorButtonRef.current.position,
+          );
+          console.log("Button scale:", doorButtonRef.current.scale);
+          console.log("Button material:", doorButtonRef.current.material);
+        }
+
+        // Pulse animation for visibility
+        const pulseScale = 1 + Math.sin(frameCount * 0.05) * 0.1;
+        doorButtonRef.current.scale.set(8 * pulseScale, 4 * pulseScale, 1);
+      } else if (doorButtonRef.current) {
+        doorButtonRef.current.visible = false;
+        if (frameCount % 120 === 0 && showEnterPromptRef.current) {
+          console.log("⚠️ Button should be visible but conditions not met:", {
+            hasButtonRef: !!doorButtonRef.current,
+            hasBuilding: !!selectedBuildingRef.current,
+            showEnterPrompt: showEnterPromptRef.current,
+          });
+        }
+      }
 
       if (frameCount === 1) {
         console.log("FIRST RENDER - Scene children:", scene.children.length);
@@ -950,7 +1118,13 @@ export default function GitHubTown() {
         metalness: buildingType === 0 ? 0.8 : 0.1,
       });
       const door = new THREE.Mesh(doorGeometry, doorMaterial);
-      door.position.set(0, doorHeight / 2 + 0.1, geometry.depth / 2 + 0.15);
+      // Position door so it pivots from the left edge
+      door.geometry.translate(doorWidth / 2, 0, 0); // Offset pivot point
+      door.position.set(
+        -doorWidth / 2,
+        doorHeight / 2 + 0.1,
+        geometry.depth / 2 + 0.15,
+      );
       buildingGroup.add(door);
       buildingGroup.userData.door = door;
 
@@ -1029,6 +1203,245 @@ export default function GitHubTown() {
       base.position.y = 0.15;
       buildingGroup.add(base);
 
+      // Create interior room (bedroom) - initially hidden
+      const interior = new THREE.Group();
+      interior.visible = false;
+      interior.position.set(0, 1.5, 0);
+
+      // Room walls (back wall where profile will be displayed)
+      const wallMaterial = new THREE.MeshStandardMaterial({
+        color: 0x2a2a3e,
+        roughness: 0.8,
+      });
+
+      const backWallGeo = new THREE.BoxGeometry(geometry.width * 0.9, 5, 0.2);
+      const backWall = new THREE.Mesh(backWallGeo, wallMaterial);
+      backWall.position.set(0, 2.5, -geometry.depth / 2 + 1);
+      interior.add(backWall);
+
+      // Floor
+      const floorGeo = new THREE.BoxGeometry(
+        geometry.width * 0.9,
+        0.1,
+        geometry.depth * 0.8,
+      );
+      const floorMaterial = new THREE.MeshStandardMaterial({
+        color: 0x4a3f35,
+        roughness: 0.9,
+      });
+      const floor = new THREE.Mesh(floorGeo, floorMaterial);
+      floor.position.set(0, 0, -geometry.depth / 4);
+      interior.add(floor);
+
+      // GitHub Profile Display - Avatar
+      const avatarLoader = new THREE.TextureLoader();
+      const avatarTexture = avatarLoader.load(
+        user.avatar_url || `https://github.com/${user.login}.png`,
+        () => {}, // onLoad
+        undefined,
+        () => {
+          // onError - use fallback
+          console.log(`Failed to load avatar for ${user.login}`);
+        },
+      );
+
+      const avatarGeo = new THREE.BoxGeometry(2.5, 2.5, 0.1);
+      const avatarMaterial = new THREE.MeshStandardMaterial({
+        map: avatarTexture,
+        emissive: 0x222222,
+        emissiveIntensity: 0.3,
+      });
+      const avatarFrame = new THREE.Mesh(avatarGeo, avatarMaterial);
+      avatarFrame.position.set(0, 6, -geometry.depth / 2 + 1.2);
+      interior.add(avatarFrame);
+
+      // Profile Info Canvas
+      const profileCanvas = document.createElement("canvas");
+      const profileCtx = profileCanvas.getContext("2d");
+      profileCanvas.width = 1024;
+      profileCanvas.height = 768;
+
+      // Draw profile info with gradient background
+      const gradient = profileCtx.createLinearGradient(
+        0,
+        0,
+        0,
+        profileCanvas.height,
+      );
+      gradient.addColorStop(0, "#1a1a2e");
+      gradient.addColorStop(1, "#0f0f1a");
+      profileCtx.fillStyle = gradient;
+      profileCtx.fillRect(0, 0, profileCanvas.width, profileCanvas.height);
+
+      // Username
+      profileCtx.font = "bold 56px Arial";
+      profileCtx.fillStyle = "#ffffff";
+      profileCtx.textAlign = "center";
+      profileCtx.fillText(user.login, profileCanvas.width / 2, 70);
+
+      // Real name
+      profileCtx.font = "32px Arial";
+      profileCtx.fillStyle = "#aaaaaa";
+      if (user.name) {
+        profileCtx.fillText(user.name, profileCanvas.width / 2, 120);
+      }
+
+      // Bio
+      let currentY = 170;
+      if (user.bio) {
+        profileCtx.font = "24px Arial";
+        profileCtx.fillStyle = "#888888";
+        const bioText = user.bio.substring(0, 120);
+        const words = bioText.split(" ");
+        let line = "";
+        let lines = [];
+
+        for (let word of words) {
+          const testLine = line + word + " ";
+          const metrics = profileCtx.measureText(testLine);
+          if (metrics.width > 900 && line !== "") {
+            lines.push(line);
+            line = word + " ";
+          } else {
+            line = testLine;
+          }
+        }
+        lines.push(line);
+
+        lines.slice(0, 2).forEach((bioLine) => {
+          profileCtx.fillText(
+            bioLine.trim(),
+            profileCanvas.width / 2,
+            currentY,
+          );
+          currentY += 35;
+        });
+        currentY += 20;
+      } else {
+        currentY += 20;
+      }
+
+      // Additional details
+      profileCtx.font = "26px Arial";
+      profileCtx.fillStyle = "#66ccff";
+
+      if (user.company) {
+        profileCtx.fillText(
+          `🏢 ${user.company}`,
+          profileCanvas.width / 2,
+          currentY,
+        );
+        currentY += 40;
+      }
+
+      if (user.location) {
+        profileCtx.fillText(
+          `📍 ${user.location}`,
+          profileCanvas.width / 2,
+          currentY,
+        );
+        currentY += 40;
+      }
+
+      const joinYear = user.created_at
+        ? new Date(user.created_at).getFullYear()
+        : null;
+      if (joinYear) {
+        profileCtx.fillText(
+          `📅 Member since ${joinYear}`,
+          profileCanvas.width / 2,
+          currentY,
+        );
+        currentY += 50;
+      } else {
+        currentY += 20;
+      }
+
+      // Stats Grid (4 items in 2 rows)
+      profileCtx.font = "bold 32px Arial";
+      const stats = [
+        { icon: "📦", value: user.public_repos || 0, label: "Repos" },
+        { icon: "👥", value: user.followers || 0, label: "Followers" },
+        { icon: "👤", value: user.following || 0, label: "Following" },
+        { icon: "📝", value: user.public_gists || 0, label: "Gists" },
+      ];
+
+      const statsStartY = currentY + 20;
+      const col1X = 256;
+      const col2X = 768;
+
+      // First row
+      profileCtx.fillStyle = "#4a9eff";
+      profileCtx.fillText(stats[0].icon, col1X, statsStartY);
+      profileCtx.fillText(String(stats[0].value), col1X, statsStartY + 45);
+      profileCtx.font = "22px Arial";
+      profileCtx.fillStyle = "#888888";
+      profileCtx.fillText(stats[0].label, col1X, statsStartY + 75);
+
+      profileCtx.font = "bold 32px Arial";
+      profileCtx.fillStyle = "#4a9eff";
+      profileCtx.fillText(stats[1].icon, col2X, statsStartY);
+      profileCtx.fillText(String(stats[1].value), col2X, statsStartY + 45);
+      profileCtx.font = "22px Arial";
+      profileCtx.fillStyle = "#888888";
+      profileCtx.fillText(stats[1].label, col2X, statsStartY + 75);
+
+      // Second row
+      const row2Y = statsStartY + 130;
+      profileCtx.font = "bold 32px Arial";
+      profileCtx.fillStyle = "#4a9eff";
+      profileCtx.fillText(stats[2].icon, col1X, row2Y);
+      profileCtx.fillText(String(stats[2].value), col1X, row2Y + 45);
+      profileCtx.font = "22px Arial";
+      profileCtx.fillStyle = "#888888";
+      profileCtx.fillText(stats[2].label, col1X, row2Y + 75);
+
+      profileCtx.font = "bold 32px Arial";
+      profileCtx.fillStyle = "#4a9eff";
+      profileCtx.fillText(stats[3].icon, col2X, row2Y);
+      profileCtx.fillText(String(stats[3].value), col2X, row2Y + 45);
+      profileCtx.font = "22px Arial";
+      profileCtx.fillStyle = "#888888";
+      profileCtx.fillText(stats[3].label, col2X, row2Y + 75);
+
+      const profileTexture = new THREE.CanvasTexture(profileCanvas);
+      const profileMaterial = new THREE.MeshStandardMaterial({
+        map: profileTexture,
+        emissive: 0x222233,
+        emissiveIntensity: 0.5,
+      });
+      const profileBoard = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 6, 0.1),
+        profileMaterial,
+      );
+      profileBoard.position.set(0, 2, -geometry.depth / 2 + 1.1);
+      interior.add(profileBoard);
+
+      // Room lighting - brighter to see profile clearly
+      const roomLight = new THREE.PointLight(0x88ccff, 1.5, 15);
+      roomLight.position.set(0, 4, -geometry.depth / 4);
+      interior.add(roomLight);
+
+      // Add ambient light in interior for better visibility
+      const interiorAmbient = new THREE.AmbientLight(0x404060, 0.8);
+      interior.add(interiorAmbient);
+
+      // Spotlight on profile board for emphasis
+      const profileSpotlight = new THREE.SpotLight(
+        0xffffff,
+        1.2,
+        12,
+        Math.PI / 6,
+      );
+      profileSpotlight.position.set(0, 4, 0);
+      profileSpotlight.target.position.set(0, 2, -geometry.depth / 2 + 1.1);
+      interior.add(profileSpotlight);
+      interior.add(profileSpotlight.target);
+
+      buildingGroup.add(interior);
+      buildingGroup.userData.interior = interior;
+      buildingGroup.userData.geometry = geometry; // Store for positioning calculations
+
       // Create username label on top of building using canvas texture
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
@@ -1087,6 +1500,44 @@ export default function GitHubTown() {
     }
   }, [newlyAddedUser, users, setNewlyAddedUser]);
 
+  // Handle entering building when door button is clicked
+  const handleEnterBuilding = () => {
+    console.log("🚪 ENTER BUILDING CLICKED!");
+
+    if (selectedBuildingRef.current && showEnterPromptRef.current) {
+      console.log("✓ Opening door and showing profile...");
+
+      // Open door animation
+      selectedBuildingRef.current.userData.isOpen = true;
+
+      // Hide the enter button
+      setShowEnterPrompt(false);
+
+      // Show profile modal
+      setShowProfileModal(true);
+
+      // Clear locked state
+      isWaitingAtDoor.current = false;
+      lockedCameraPosition.current = null;
+    } else {
+      console.log("❌ Cannot enter:", {
+        hasBuilding: !!selectedBuildingRef.current,
+        showPromptRef: showEnterPromptRef.current,
+        showPromptState: showEnterPrompt,
+      });
+    }
+  };
+
+  // Handle closing profile modal
+  const handleCloseProfile = () => {
+    setShowProfileModal(false);
+
+    // Close door
+    if (selectedBuildingRef.current) {
+      selectedBuildingRef.current.userData.isOpen = false;
+    }
+  };
+
   return (
     <div className="relative w-full h-full">
       <canvas
@@ -1095,14 +1546,149 @@ export default function GitHubTown() {
         style={{ display: "block", touchAction: "none" }}
       />
       <SearchBar />
-      <UserInfoPanel />
 
-      {/* Title */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-        <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-400 drop-shadow-lg">
-          3D GitHub Town
-        </h1>
-      </div>
+      {/* GitHub Profile Modal */}
+      {showProfileModal && selectedBuildingRef.current && (
+        <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/70 backdrop-blur-sm">
+          <div className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl shadow-2xl border-2 border-cyan-500/30 p-4 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto animate-fadeIn">
+            {/* Close button */}
+            <button
+              onClick={handleCloseProfile}
+              className="absolute top-3 right-3 text-slate-400 hover:text-white transition-colors z-10"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            {(() => {
+              const user = selectedBuildingRef.current.userData.user;
+              return (
+                <>
+                  {/* Header with Avatar and Basic Info */}
+                  <div className="flex items-start gap-4 mb-4">
+                    <img
+                      src={
+                        user.avatar_url ||
+                        `https://github.com/${user.login}.png`
+                      }
+                      alt={user.login}
+                      className="w-20 h-20 rounded-full border-3 border-cyan-500 shadow-lg flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-2xl font-bold text-white mb-1 truncate">
+                        {user.name || user.login}
+                      </h2>
+                      <p className="text-base text-cyan-400 mb-2 truncate">
+                        @{user.login}
+                      </p>
+                      {user.bio && (
+                        <p className="text-sm text-slate-300 mb-2 line-clamp-2">
+                          {user.bio}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2 text-xs text-slate-400">
+                        {user.company && (
+                          <span className="flex items-center gap-1">
+                            <svg
+                              className="w-3 h-3"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4z" />
+                            </svg>
+                            {user.company}
+                          </span>
+                        )}
+                        {user.location && (
+                          <span className="flex items-center gap-1">
+                            <svg
+                              className="w-3 h-3"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            {user.location}
+                          </span>
+                        )}
+                        {user.created_at && (
+                          <span className="flex items-center gap-1">
+                            <svg
+                              className="w-3 h-3"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            Joined {new Date(user.created_at).getFullYear()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
+                      <div className="text-xl font-bold text-blue-400 mb-0.5">
+                        {user.public_repos || 0}
+                      </div>
+                      <div className="text-xs text-slate-400">Repos</div>
+                    </div>
+                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
+                      <div className="text-xl font-bold text-green-400 mb-0.5">
+                        {user.followers || 0}
+                      </div>
+                      <div className="text-xs text-slate-400">Followers</div>
+                    </div>
+                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
+                      <div className="text-xl font-bold text-purple-400 mb-0.5">
+                        {user.following || 0}
+                      </div>
+                      <div className="text-xs text-slate-400">Following</div>
+                    </div>
+                    <div className="bg-slate-800/50 rounded-lg p-3 text-center border border-slate-700">
+                      <div className="text-xl font-bold text-yellow-400 mb-0.5">
+                        {user.public_gists || 0}
+                      </div>
+                      <div className="text-xs text-slate-400">Gists</div>
+                    </div>
+                  </div>
+
+                  {/* Action Button */}
+                  <a
+                    href={`https://github.com/${user.login}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-semibold py-2.5 px-4 rounded-lg text-center text-sm transition-all duration-300 shadow-lg hover:shadow-cyan-500/50"
+                  >
+                    View Full Profile on GitHub →
+                  </a>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Loading indicator */}
       {loading && (

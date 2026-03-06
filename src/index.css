@@ -24,7 +24,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  
+
   .border-3 {
     border-width: 3px;
   }
@@ -55,4 +55,20 @@ canvas {
 
 canvas:active {
   cursor: grabbing;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
 }
