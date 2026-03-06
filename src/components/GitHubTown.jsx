@@ -44,6 +44,7 @@ export default function GitHubTown() {
   const showEnterPromptRef = useRef(false); // Ref for animation loop to access current value
   const [showEnterPrompt, setShowEnterPrompt] = useState(false);
   const [webglError, setWebglError] = useState(false);
+  const [timeOfDayPercent, setTimeOfDayPercent] = useState(0); // 0-100, represents day progress
   const activatedInfoSpritesRef = useRef([]); // 3D sprites showing user info on building
 
   // Sync ref with state for animation loop access
@@ -434,6 +435,10 @@ export default function GitHubTown() {
     };
     window.addEventListener("resize", onWindowResize);
 
+    // Day/Night cycle time tracker (5-minute cycle = 300 seconds)
+    const cycleTime = 300; // 5 minutes in seconds
+    let dayNightTime = 0;
+
     // Animation loop
     let animationId;
     let time = 0;
@@ -442,6 +447,59 @@ export default function GitHubTown() {
       animationId = requestAnimationFrame(animate);
       time += 0.01;
       frameCount++;
+
+      // Update day/night cycle (from 0 to 1, cycling every 5 minutes)
+      dayNightTime = (Date.now() / 1000 / cycleTime) % 1;
+
+      // Calculate time of day (0 = midnight, 0.5 = noon)
+      // Use sine wave for smooth transition
+      const timeOfDay =
+        (Math.sin(dayNightTime * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+
+      // Interpolate colors based on time of day
+      // Day colors
+      const dayBgColor = new THREE.Color(0x87ceeb); // Sky blue
+      const dayFogColor = new THREE.Color(0xb0c4de); // Light steel blue
+      const dayAmbientColor = new THREE.Color(0xffffff);
+      const dayMainLightColor = new THREE.Color(0xffffee); // Warm sunlight
+
+      // Night colors
+      const nightBgColor = new THREE.Color(0x0a0a15); // Dark night
+      const nightFogColor = new THREE.Color(0x0a0a15);
+      const nightAmbientColor = new THREE.Color(0x404060);
+      const nightMainLightColor = new THREE.Color(0xaaccff); // Cool moonlight
+
+      // Lerp between day and night
+      scene.background.lerpColors(nightBgColor, dayBgColor, timeOfDay);
+      scene.fog.color.lerpColors(nightFogColor, dayFogColor, timeOfDay);
+
+      // Update lights
+      ambientLight.color.lerpColors(
+        nightAmbientColor,
+        dayAmbientColor,
+        timeOfDay,
+      );
+      ambientLight.intensity = 0.3 + timeOfDay * 0.7; // 0.3 at night, 1.0 at day
+
+      mainLight.color.lerpColors(
+        nightMainLightColor,
+        dayMainLightColor,
+        timeOfDay,
+      );
+      mainLight.intensity = 0.5 + timeOfDay * 1.0; // 0.5 at night, 1.5 at day
+
+      // Adjust fill lights
+      fillLight1.intensity = 0.2 + timeOfDay * 0.3;
+      fillLight2.intensity = Math.max(0.1, 0.4 - timeOfDay * 0.3); // City lights brighter at night
+
+      // Update ground color
+      const nightGroundColor = new THREE.Color(0x1a1a1a);
+      const dayGroundColor = new THREE.Color(0x4a5a4a); // Greenish gray for day
+      groundMaterial.color.lerpColors(
+        nightGroundColor,
+        dayGroundColor,
+        timeOfDay,
+      );
 
       // Log every 60 frames (about once per second)
       if (frameCount % 60 === 0) {
@@ -1941,6 +1999,25 @@ export default function GitHubTown() {
           <p>
             <span className="text-slate-400">Buildings:</span>{" "}
             <span className="text-white font-bold">{users.length}</span>
+          </p>
+          <p>
+            <span className="text-slate-400">Time of Day:</span>{" "}
+            <span
+              className={`font-bold ${
+                timeOfDayPercent > 70
+                  ? "text-yellow-400"
+                  : timeOfDayPercent > 30
+                    ? "text-orange-400"
+                    : "text-blue-400"
+              }`}
+            >
+              {timeOfDayPercent > 70
+                ? "☀️ Day"
+                : timeOfDayPercent > 30
+                  ? "🌅 Dusk/Dawn"
+                  : "🌙 Night"}{" "}
+              ({timeOfDayPercent}%)
+            </span>
           </p>
           <p>
             <span className="text-slate-400">Street Lights:</span>{" "}
