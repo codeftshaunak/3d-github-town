@@ -1,33 +1,32 @@
 /**
- * Generate building position using an expanding spiral ring layout.
- * This supports infinite buildings by adding more rings as needed.
+ * Generate building position spread across the entire city surface.
+ * Buildings are distributed in city blocks, avoiding roads.
  */
 export function generateBuildingPosition(index, total) {
-  if (index === 0) return { x: 0, z: 0 };
+  // City grid: roads are at multiples of 40, creating city blocks
+  // City spans from -200 to 200 in both x and z directions
+  const citySize = 400;
+  const blockSize = 40;
+  const blocksPerSide = 10; // -5 to 5 in both directions
 
-  // Dynamic ring system: rings grow outward with increasing capacity
-  // Ring N has capacity = 6 * (N + 1), radius = 10 * (N + 1)
-  let remaining = index - 1;
-  let ringIndex = 0;
+  // Calculate which block this building should be in
+  const totalBlocks = blocksPerSide * blocksPerSide;
+  const blockIndex = index % totalBlocks;
 
-  while (true) {
-    const capacity = 6 * (ringIndex + 1);
-    const radius = 10 + ringIndex * 12;
+  // Get block coordinates (-5 to 4 for x and z)
+  const blockX = Math.floor(blockIndex % blocksPerSide) - 5;
+  const blockZ = Math.floor(blockIndex / blocksPerSide) - 5;
 
-    if (remaining < capacity) {
-      const angle = (remaining / capacity) * Math.PI * 2;
-      // Add slight jitter so buildings don't line up perfectly
-      const jitter = (seededRandom(index * 7 + 3) - 0.5) * 3;
-      const radiusJitter = (seededRandom(index * 13 + 7) - 0.5) * 4;
-      return {
-        x: Math.cos(angle) * (radius + radiusJitter) + jitter,
-        z: Math.sin(angle) * (radius + radiusJitter) + jitter,
-      };
-    }
+  // Random position within the block, avoiding edges (roads)
+  // Each block is 40x40, leave 6 units margin on each side for roads
+  const seed = index * 123 + 456;
+  const offsetX = (seededRandom(seed) - 0.5) * 28; // 28 = 40 - 12 (margins)
+  const offsetZ = (seededRandom(seed + 1) - 0.5) * 28;
 
-    remaining -= capacity;
-    ringIndex++;
-  }
+  const x = blockX * blockSize + offsetX;
+  const z = blockZ * blockSize + offsetZ;
+
+  return { x, z };
 }
 
 // Simple seeded pseudo-random to keep positions stable across re-renders
@@ -48,16 +47,22 @@ export function generateBuildingGeometry(user) {
   const height = Math.min(30, base + followerHeight + repoHeight);
 
   // Width based on repos
-  const width = Math.max(2, Math.min(6, 2 + Math.log10(Math.max(1, repos)) * 0.9));
+  const width = Math.max(
+    2,
+    Math.min(6, 2 + Math.log10(Math.max(1, repos)) * 0.9),
+  );
 
   // Depth based on following
-  const depth = Math.max(2, Math.min(6, 2 + Math.log10(Math.max(1, following + 1)) * 0.9));
+  const depth = Math.max(
+    2,
+    Math.min(6, 2 + Math.log10(Math.max(1, following + 1)) * 0.9),
+  );
 
   return { width, depth, height };
 }
 
 export function getBuildingColor(user) {
-  const login = user.login || '';
+  const login = user.login || "";
 
   // Hash the username to get a consistent color
   let hash = 0;
@@ -86,9 +91,9 @@ export function getBuildingColor(user) {
 
 export function getArchitectureStyle(user) {
   const repos = user.public_repos || 0;
-  if (repos > 100) return 'skyscraper';
-  if (repos > 50) return 'highrise';
-  if (repos > 20) return 'midrise';
-  if (repos > 5) return 'lowrise';
-  return 'cottage';
+  if (repos > 100) return "skyscraper";
+  if (repos > 50) return "highrise";
+  if (repos > 20) return "midrise";
+  if (repos > 5) return "lowrise";
+  return "cottage";
 }
