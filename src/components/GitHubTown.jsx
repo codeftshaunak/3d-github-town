@@ -23,7 +23,8 @@ export default function GitHubTown() {
   const buildingsRef = useRef([]);
   const labelsRef = useRef([]);
   const selectedBuildingRef = useRef(null);
-  const { users, setSelectedUser, loading } = useGitHub();
+  const { users, setSelectedUser, loading, newlyAddedUser, setNewlyAddedUser } =
+    useGitHub();
   const controls = useRef({
     forward: false,
     backward: false,
@@ -707,20 +708,50 @@ export default function GitHubTown() {
           buildingGroup.add(rail);
         }
 
-        // Residential roof - sloped
+        // Residential roof - sloped with detailed shingles
+        const roofHeight = geometry.height * 0.25;
         const roofGeometry = new THREE.ConeGeometry(
-          geometry.width * 0.8,
-          geometry.height * 0.15,
+          geometry.width * 0.85,
+          roofHeight,
           4,
         );
         const roofMaterial = new THREE.MeshStandardMaterial({
+          color: 0x3a2520,
+          roughness: 0.95,
+          metalness: 0.05,
+        });
+        const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+        roof.position.y = geometry.height + roofHeight / 2;
+        roof.rotation.y = Math.PI / 4;
+        buildingGroup.add(roof);
+
+        // Chimney for residential buildings
+        const chimneyGeometry = new THREE.BoxGeometry(
+          0.8,
+          geometry.height * 0.3,
+          0.8,
+        );
+        const chimneyMaterial = new THREE.MeshStandardMaterial({
           color: 0x8b4513,
           roughness: 0.9,
         });
-        const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-        roof.position.y = geometry.height + geometry.height * 0.075;
-        roof.rotation.y = Math.PI / 4;
-        buildingGroup.add(roof);
+        const chimney = new THREE.Mesh(chimneyGeometry, chimneyMaterial);
+        chimney.position.set(
+          geometry.width * 0.3,
+          geometry.height + geometry.height * 0.15,
+          -geometry.depth * 0.25,
+        );
+        buildingGroup.add(chimney);
+
+        // Chimney cap
+        const capGeometry = new THREE.BoxGeometry(1, 0.3, 1);
+        const cap = new THREE.Mesh(capGeometry, chimneyMaterial);
+        cap.position.set(
+          geometry.width * 0.3,
+          geometry.height + geometry.height * 0.3,
+          -geometry.depth * 0.25,
+        );
+        buildingGroup.add(cap);
       } else {
         // Classic building - add columns
         const columnMaterial = new THREE.MeshStandardMaterial({
@@ -771,10 +802,10 @@ export default function GitHubTown() {
         buildingGroup.add(dome);
       }
 
-      // Windows for all building types
+      // Windows for all building types with frames
       const floors = Math.floor(geometry.height / 3);
       const windowsPerFloor = buildingType === 0 ? 5 : 3; // More windows for glass buildings
-      const windowSize = buildingType === 0 ? 0.6 : 0.4;
+      const windowSize = buildingType === 0 ? 0.6 : 0.5;
       const windowDepth = 0.15;
 
       const windowMaterial = new THREE.MeshStandardMaterial({
@@ -785,7 +816,14 @@ export default function GitHubTown() {
         roughness: 0.1,
       });
 
-      // Front and back windows
+      // Window frame material
+      const frameMaterial = new THREE.MeshStandardMaterial({
+        color: buildingType === 2 ? 0xffffff : 0x222222,
+        roughness: 0.8,
+        metalness: 0.2,
+      });
+
+      // Front and back windows with frames
       for (let floor = 0; floor < floors; floor++) {
         for (let win = 0; win < windowsPerFloor; win++) {
           const windowGeo = new THREE.BoxGeometry(
@@ -794,12 +832,28 @@ export default function GitHubTown() {
             windowDepth,
           );
 
+          // Window frame
+          const frameGeo = new THREE.BoxGeometry(
+            windowSize * 0.9,
+            windowSize * 1.6,
+            windowDepth + 0.05,
+          );
+
           // Front windows
-          const frontWindow = new THREE.Mesh(windowGeo, windowMaterial);
           const xPos =
             (win - (windowsPerFloor - 1) / 2) *
             (geometry.width / (windowsPerFloor + 0.5));
           const yPos = (floor + 0.5) * (geometry.height / floors);
+
+          const frontFrame = new THREE.Mesh(frameGeo, frameMaterial);
+          frontFrame.position.set(
+            xPos,
+            yPos,
+            geometry.depth / 2 + windowDepth / 2 - 0.02,
+          );
+          buildingGroup.add(frontFrame);
+
+          const frontWindow = new THREE.Mesh(windowGeo, windowMaterial);
           frontWindow.position.set(
             xPos,
             yPos,
@@ -808,6 +862,14 @@ export default function GitHubTown() {
           buildingGroup.add(frontWindow);
 
           // Back windows
+          const backFrame = new THREE.Mesh(frameGeo, frameMaterial);
+          backFrame.position.set(
+            xPos,
+            yPos,
+            -geometry.depth / 2 - windowDepth / 2 + 0.02,
+          );
+          buildingGroup.add(backFrame);
+
           const backWindow = new THREE.Mesh(windowGeo, windowMaterial);
           backWindow.position.set(
             xPos,
@@ -818,7 +880,7 @@ export default function GitHubTown() {
         }
       }
 
-      // Side windows
+      // Side windows with frames
       const sideWindows = buildingType === 0 ? 3 : 2;
       for (let floor = 0; floor < floors; floor++) {
         for (let win = 0; win < sideWindows; win++) {
@@ -827,12 +889,25 @@ export default function GitHubTown() {
             windowSize * 1.5,
             windowSize * 0.8,
           );
+          const frameGeo = new THREE.BoxGeometry(
+            windowDepth + 0.05,
+            windowSize * 1.6,
+            windowSize * 0.9,
+          );
           const zPos =
             (win - (sideWindows - 1) / 2) *
             (geometry.depth / (sideWindows + 0.5));
           const yPos = (floor + 0.5) * (geometry.height / floors);
 
           // Left side
+          const leftFrame = new THREE.Mesh(frameGeo, frameMaterial);
+          leftFrame.position.set(
+            -geometry.width / 2 - windowDepth / 2 + 0.02,
+            yPos,
+            zPos,
+          );
+          buildingGroup.add(leftFrame);
+
           const leftWindow = new THREE.Mesh(windowGeo, windowMaterial);
           leftWindow.position.set(
             -geometry.width / 2 - windowDepth / 2,
@@ -842,6 +917,14 @@ export default function GitHubTown() {
           buildingGroup.add(leftWindow);
 
           // Right side
+          const rightFrame = new THREE.Mesh(frameGeo, frameMaterial);
+          rightFrame.position.set(
+            geometry.width / 2 + windowDepth / 2 - 0.02,
+            yPos,
+            zPos,
+          );
+          buildingGroup.add(rightFrame);
+
           const rightWindow = new THREE.Mesh(windowGeo, windowMaterial);
           rightWindow.position.set(
             geometry.width / 2 + windowDepth / 2,
@@ -852,21 +935,69 @@ export default function GitHubTown() {
         }
       }
 
-      // Main entrance door (more prominent)
-      const doorGeometry = new THREE.BoxGeometry(
-        geometry.width * 0.4,
-        geometry.height * 0.2,
-        0.3,
-      );
+      // Main entrance door (more prominent and detailed)
+      const doorWidth = geometry.width * 0.35;
+      const doorHeight = geometry.height * 0.18;
+      const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, 0.3);
       const doorMaterial = new THREE.MeshStandardMaterial({
-        color: buildingType === 0 ? 0x111111 : 0x654321,
+        color:
+          buildingType === 0
+            ? 0x111111
+            : buildingType === 2
+              ? 0x8b4513
+              : 0x333333,
         roughness: buildingType === 0 ? 0.3 : 0.9,
         metalness: buildingType === 0 ? 0.8 : 0.1,
       });
       const door = new THREE.Mesh(doorGeometry, doorMaterial);
-      door.position.set(0, geometry.height * 0.1, geometry.depth / 2 + 0.15);
+      door.position.set(0, doorHeight / 2 + 0.1, geometry.depth / 2 + 0.15);
       buildingGroup.add(door);
       buildingGroup.userData.door = door;
+
+      // Door frame
+      const doorFrameGeometry = new THREE.BoxGeometry(
+        doorWidth * 1.15,
+        doorHeight * 1.1,
+        0.25,
+      );
+      const doorFrame = new THREE.Mesh(doorFrameGeometry, frameMaterial);
+      doorFrame.position.set(
+        0,
+        doorHeight / 2 + 0.1,
+        geometry.depth / 2 + 0.05,
+      );
+      buildingGroup.add(doorFrame);
+
+      // Door handle
+      const handleGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+      const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffd700,
+        roughness: 0.3,
+        metalness: 0.9,
+      });
+      const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+      handle.position.set(
+        doorWidth * 0.35,
+        doorHeight / 2 + 0.1,
+        geometry.depth / 2 + 0.35,
+      );
+      buildingGroup.add(handle);
+
+      // Door window (for some building types)
+      if (buildingType !== 0) {
+        const doorWindowGeo = new THREE.BoxGeometry(
+          doorWidth * 0.4,
+          doorHeight * 0.3,
+          0.15,
+        );
+        const doorWindow = new THREE.Mesh(doorWindowGeo, windowMaterial);
+        doorWindow.position.set(
+          0,
+          doorHeight * 0.7 + 0.1,
+          geometry.depth / 2 + 0.2,
+        );
+        buildingGroup.add(doorWindow);
+      }
 
       // Entrance canopy
       const canopyGeometry = new THREE.BoxGeometry(
@@ -932,6 +1063,29 @@ export default function GitHubTown() {
       `Created ${buildingsRef.current.length} buildings in the scene`,
     );
   }, [users]);
+
+  // Auto-zoom to newly searched/added buildings
+  useEffect(() => {
+    if (!newlyAddedUser || buildingsRef.current.length === 0) return;
+
+    // Find the building for the newly added user
+    const newBuilding = buildingsRef.current.find(
+      (building) => building.userData.user.login === newlyAddedUser,
+    );
+
+    if (newBuilding) {
+      // Zoom to the new building
+      cameraTarget.current = newBuilding.position.clone();
+      isZoomingToBuilding.current = true;
+      newBuilding.userData.isOpen = true;
+      selectedBuildingRef.current = newBuilding;
+
+      // Clear the newly added user flag after a short delay
+      setTimeout(() => {
+        setNewlyAddedUser(null);
+      }, 500);
+    }
+  }, [newlyAddedUser, users, setNewlyAddedUser]);
 
   return (
     <div className="relative w-full h-full">

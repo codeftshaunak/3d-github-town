@@ -77,6 +77,7 @@ export function GitHubProvider({ children }) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [newlyAddedUser, setNewlyAddedUser] = useState(null);
 
   // Load default users on mount
   useEffect(() => {
@@ -149,8 +150,13 @@ export function GitHubProvider({ children }) {
       setUsers((prevUsers) => {
         const exists = prevUsers.some((u) => u.login === userData.login);
         if (exists) {
+          // User already exists, just select them
+          setSelectedUser(userData);
+          setNewlyAddedUser(userData.login);
           return prevUsers;
         }
+        // New user added
+        setNewlyAddedUser(userData.login);
         return [...prevUsers, userData];
       });
 
@@ -173,6 +179,8 @@ export function GitHubProvider({ children }) {
     loading,
     error,
     setError,
+    newlyAddedUser,
+    setNewlyAddedUser,
   };
 
   return (
