@@ -46,16 +46,18 @@ export default function GitHubTown() {
       return;
     }
 
+    let scene, camera, renderer;
+
     try {
       // Scene setup
-      const scene = new THREE.Scene();
+      scene = new THREE.Scene();
       scene.background = new THREE.Color(0x87ceeb); // Sky blue
       scene.fog = new THREE.Fog(0x87ceeb, 100, 400); // Atmospheric fog
       sceneRef.current = scene;
       console.log("Scene created");
 
       // Camera setup
-      const camera = new THREE.PerspectiveCamera(
+      camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
         0.1,
@@ -69,7 +71,7 @@ export default function GitHubTown() {
       console.log("Camera looking at origin (0, 0, 0)");
 
       // Renderer setup with error handling
-      const renderer = new THREE.WebGLRenderer({
+      renderer = new THREE.WebGLRenderer({
         canvas: canvasRef.current,
         antialias: true,
         alpha: false,
