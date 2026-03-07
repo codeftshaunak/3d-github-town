@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGitHub } from "../context/GitHubContext";
+import logo from "../assets/logo.png";
 
 export default function SearchBar() {
   const [query, setQuery] = useState("");
@@ -19,6 +20,10 @@ export default function SearchBar() {
 
   return (
     <div className="absolute top-20 left-4 z-20 w-full max-w-md px-4">
+      {/* Logo */}
+      <div className="flex justify-center mb-4">
+        <img src={logo} alt="Git Town Logo" className="h-32 w-auto" />
+      </div>
       <form onSubmit={handleSubmit} className="relative">
         <div className="relative group">
           {/* Glow effect */}
@@ -80,17 +85,17 @@ export default function SearchBar() {
             <button
               type="submit"
               disabled={searchLoading || !query.trim()}
-              className="m-1.5 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/50 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
+              className="m-1.5 px-2.5 py-1.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/50 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-1"
             >
               {searchLoading ? (
                 <>
-                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                   <span>Finding...</span>
                 </>
               ) : (
                 <>
                   <svg
-                    className="w-3.5 h-3.5"
+                    className="w-3 h-3"
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
