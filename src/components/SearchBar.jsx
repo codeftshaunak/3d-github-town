@@ -31,9 +31,9 @@ export default function SearchBar() {
 
           <div className="relative flex items-center bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
             {/* Search icon */}
-            <div className="pl-4 pr-2">
+            <div className="pl-3 pr-1.5">
               <svg
-                className="w-5 h-5 text-slate-400"
+                className="w-4 h-4 text-slate-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -52,7 +52,7 @@ export default function SearchBar() {
               value={query}
               onChange={handleChange}
               placeholder="Search GitHub username..."
-              className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 py-4 px-2 text-sm font-medium focus:outline-none"
+              className="flex-1 bg-transparent text-slate-100 placeholder-slate-500 py-2.5 px-2 text-sm font-medium focus:outline-none"
             />
 
             {/* Clear button */}
@@ -85,17 +85,17 @@ export default function SearchBar() {
             <button
               type="submit"
               disabled={searchLoading || !query.trim()}
-              className="m-1.5 px-2.5 py-1.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/50 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-1"
+              className="m-1 px-1.5 py-0.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/50 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-0.5"
             >
               {searchLoading ? (
                 <>
-                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <div className="w-2.5 h-2.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                   <span>Finding...</span>
                 </>
               ) : (
                 <>
                   <svg
-                    className="w-3 h-3"
+                    className="w-2.5 h-2.5"
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
@@ -131,18 +131,20 @@ export default function SearchBar() {
 
       {/* Quick search suggestions */}
       <div className="mt-3 flex flex-wrap gap-2 justify-center">
-        {["torvalds", "gaearon", "sindresorhus", "yyx990803"].map((name) => (
-          <button
-            key={name}
-            onClick={() => {
-              setQuery(name);
-              searchUser(name);
-            }}
-            className="px-3 py-1 bg-slate-900/70 backdrop-blur-sm border border-slate-700/50 rounded-lg text-xs text-slate-400 hover:text-blue-400 hover:border-blue-500/50 transition-all duration-200"
-          >
-            @{name}
-          </button>
-        ))}
+        {["codeftshaunak", "codeftsaikat", "prodip dev", "tonmoydeb404"].map(
+          (name) => (
+            <button
+              key={name}
+              onClick={() => {
+                setQuery(name);
+                searchUser(name);
+              }}
+              className="px-3 py-1 bg-slate-900/70 backdrop-blur-sm border border-slate-700/50 rounded-lg text-xs text-slate-400 hover:text-blue-400 hover:border-blue-500/50 transition-all duration-200"
+            >
+              @{name}
+            </button>
+          ),
+        )}
       </div>
     </div>
   );

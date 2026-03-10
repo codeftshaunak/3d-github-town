@@ -41,6 +41,11 @@ export default function GitHubTown() {
   const isViewingBuilding = useRef(false); // Camera locked while viewing building info
   const lockedCameraPosition = useRef(null); // Locked camera position when waiting
   const doorButtonRef = useRef(null); // 3D button sprite on the door
+  const githubDollRef = useRef(null); // GitHub Octocat doll held by character
+  const clickMeTextRef = useRef(null); // "Click Me" text above Octocat
+  const particlesRef = useRef([]); // Flowers and leaves particles after blast
+  const countdownRef = useRef(null); // Countdown value for redirect
+  const redirectUrlRef = useRef(null); // URL to redirect to after countdown
   const showEnterPromptRef = useRef(false); // Ref for animation loop to access current value
   const [showEnterPrompt, setShowEnterPrompt] = useState(false);
   const [webglError, setWebglError] = useState(false);
@@ -191,12 +196,12 @@ export default function GitHubTown() {
     const createDoorButton = () => {
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
-      canvas.width = 512;
-      canvas.height = 256;
+      canvas.width = 384;
+      canvas.height = 192;
 
       // Glow effect
       context.shadowColor = "#00ffff";
-      context.shadowBlur = 30;
+      context.shadowBlur = 20;
       context.shadowOffsetX = 0;
       context.shadowOffsetY = 0;
 
@@ -206,27 +211,27 @@ export default function GitHubTown() {
       gradient.addColorStop(0.5, "#06b6d4");
       gradient.addColorStop(1, "#3b82f6");
       context.fillStyle = gradient;
-      context.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 20);
+      context.roundRect(8, 8, canvas.width - 16, canvas.height - 16, 15);
       context.fill();
 
       // Border with glow
       context.strokeStyle = "#ffffff";
-      context.lineWidth = 6;
-      context.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 20);
+      context.lineWidth = 4;
+      context.roundRect(8, 8, canvas.width - 16, canvas.height - 16, 15);
       context.stroke();
 
       // Reset shadow for text
-      context.shadowBlur = 10;
+      context.shadowBlur = 8;
 
       // Text
-      context.font = "bold 60px Arial";
+      context.font = "bold 45px Arial";
       context.fillStyle = "#ffffff";
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.fillText("🚪 ENTER", canvas.width / 2, canvas.height / 2 - 10);
+      context.fillText("🚪 ENTER", canvas.width / 2, canvas.height / 2 - 8);
 
-      context.font = "bold 28px Arial";
-      context.fillText("Click Here", canvas.width / 2, canvas.height / 2 + 45);
+      context.font = "bold 21px Arial";
+      context.fillText("Click Here", canvas.width / 2, canvas.height / 2 + 34);
 
       const texture = new THREE.CanvasTexture(canvas);
       const material = new THREE.SpriteMaterial({
@@ -235,7 +240,7 @@ export default function GitHubTown() {
         depthTest: true,
       });
       const sprite = new THREE.Sprite(material);
-      sprite.scale.set(8, 4, 1); // Larger button
+      sprite.scale.set(5, 2.5, 1); // Compact button
       sprite.visible = false;
       sprite.userData.isDoorButton = true; // Mark it as clickable
       scene.add(sprite);
@@ -243,6 +248,186 @@ export default function GitHubTown() {
     };
 
     createDoorButton();
+
+    // Create 3D GitHub Octocat doll
+    const createGitHubDoll = () => {
+      const doll = new THREE.Group();
+
+      // Octocat body (round, cute character)
+      const bodyGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+      const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x24292e, // GitHub dark color
+        roughness: 0.6,
+        metalness: 0.2,
+      });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      doll.add(body);
+
+      // Octocat head (slightly bigger sphere on top)
+      const headGeometry = new THREE.SphereGeometry(0.25, 16, 16);
+      const headMaterial = new THREE.MeshStandardMaterial({
+        color: 0x24292e,
+        roughness: 0.6,
+        metalness: 0.2,
+      });
+      const head = new THREE.Mesh(headGeometry, headMaterial);
+      head.position.set(0, 0.45, 0);
+      doll.add(head);
+
+      // Eyes (white and frightened look)
+      const eyeGeometry = new THREE.CircleGeometry(0.08, 16);
+      const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+      leftEye.position.set(-0.1, 0.5, 0.24);
+      leftEye.rotation.y = Math.PI; // Face forward
+      doll.add(leftEye);
+
+      const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+      rightEye.position.set(0.1, 0.5, 0.24);
+      rightEye.rotation.y = Math.PI; // Face forward
+      doll.add(rightEye);
+
+      // Pupils (small black dots, looking scared/trying to run)
+      const pupilGeometry = new THREE.CircleGeometry(0.04, 16);
+      const pupilMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+      const leftPupil = new THREE.Mesh(pupilGeometry, pupilMaterial);
+      leftPupil.position.set(-0.08, 0.52, 0.25);
+      leftPupil.rotation.y = Math.PI; // Face forward
+      doll.add(leftPupil);
+
+      const rightPupil = new THREE.Mesh(pupilGeometry, pupilMaterial);
+      rightPupil.position.set(0.12, 0.52, 0.25);
+      rightPupil.rotation.y = Math.PI; // Face forward
+      doll.add(rightPupil);
+
+      // Mouth (scared expression - O shape)
+      const mouthGeometry = new THREE.CircleGeometry(0.05, 16);
+      const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+      const mouth = new THREE.Mesh(mouthGeometry, mouthMaterial);
+      mouth.position.set(0, 0.35, 0.24);
+      mouth.rotation.y = Math.PI; // Face forward
+      doll.add(mouth);
+
+      // Tentacles/arms (8 small tentacles trying to escape)
+      const tentacleGeometry = new THREE.CylinderGeometry(0.04, 0.03, 0.25, 8);
+      const tentacleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x24292e,
+        roughness: 0.6,
+      });
+
+      // Create 8 tentacles around the body
+      for (let i = 0; i < 8; i++) {
+        const tentacle = new THREE.Mesh(tentacleGeometry, tentacleMaterial);
+        const angle = (i * Math.PI * 2) / 8;
+        const radius = 0.25;
+        tentacle.position.set(
+          Math.cos(angle) * radius,
+          -0.1,
+          Math.sin(angle) * radius,
+        );
+        tentacle.rotation.z = Math.PI / 6 + angle; // Angle outward
+        tentacle.userData.tentacleIndex = i; // For animation
+        doll.add(tentacle);
+      }
+
+      // Add GitHub logo on belly (white circle with cat silhouette)
+      const logoGeometry = new THREE.CircleGeometry(0.12, 16);
+      const logoMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const logo = new THREE.Mesh(logoGeometry, logoMaterial);
+      logo.position.set(0, 0, 0.3);
+      logo.rotation.y = Math.PI; // Face forward
+      doll.add(logo);
+
+      // Cat ears on top of head
+      const earGeometry = new THREE.ConeGeometry(0.08, 0.15, 8);
+      const earMaterial = new THREE.MeshStandardMaterial({
+        color: 0x24292e,
+        roughness: 0.6,
+      });
+
+      const leftEar = new THREE.Mesh(earGeometry, earMaterial);
+      leftEar.position.set(-0.15, 0.65, 0);
+      leftEar.rotation.z = -Math.PI / 6;
+      doll.add(leftEar);
+
+      const rightEar = new THREE.Mesh(earGeometry, earMaterial);
+      rightEar.position.set(0.15, 0.65, 0);
+      rightEar.rotation.z = Math.PI / 6;
+      doll.add(rightEar);
+
+      doll.visible = false;
+      doll.userData.isGitHubDoll = true; // Mark as clickable
+      doll.userData.tentacles = doll.children.filter(
+        (child) => child.userData.tentacleIndex !== undefined,
+      );
+
+      scene.add(doll);
+      githubDollRef.current = doll;
+    };
+
+    createGitHubDoll();
+
+    // Create "Click Me" text above Octocat (updateable)
+    const createClickMeText = () => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      canvas.width = 256;
+      canvas.height = 64;
+
+      // Glow effect
+      context.shadowColor = "#00ff00";
+      context.shadowBlur = 15;
+      context.shadowOffsetX = 0;
+      context.shadowOffsetY = 0;
+
+      // Text
+      context.font = "bold 36px Arial";
+      context.fillStyle = "#00ff00";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("👆 CLICK ME", canvas.width / 2, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: true,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(3, 0.75, 1);
+      sprite.visible = false;
+      sprite.userData.canvas = canvas; // Store canvas for updates
+      sprite.userData.context = context; // Store context for updates
+      scene.add(sprite);
+      clickMeTextRef.current = sprite;
+    };
+
+    createClickMeText();
+
+    // Function to update the click me text
+    const updateClickMeText = (text) => {
+      if (!clickMeTextRef.current) return;
+
+      const canvas = clickMeTextRef.current.userData.canvas;
+      const context = clickMeTextRef.current.userData.context;
+
+      // Clear canvas
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Redraw with new text
+      context.shadowColor = "#00ff00";
+      context.shadowBlur = 15;
+      context.font = "bold 36px Arial";
+      context.fillStyle = "#00ff00";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+      // Update texture
+      clickMeTextRef.current.material.map.needsUpdate = true;
+    };
 
     // Raycaster for click detection
     const raycaster = new THREE.Raycaster();
@@ -253,6 +438,105 @@ export default function GitHubTown() {
       mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
+
+      // Check if GitHub doll was clicked
+      if (githubDollRef.current && githubDollRef.current.visible) {
+        console.log("🔍 Checking GitHub doll for click...");
+        const dollIntersects = raycaster.intersectObjects(
+          githubDollRef.current.children,
+          true,
+        );
+        if (dollIntersects.length > 0) {
+          console.log(
+            "✅ GitHub doll clicked! Creating blast effect and opening GitHub profile!",
+          );
+
+          // Create blast effect with flowers and leaves
+          const dollPos = githubDollRef.current.position.clone();
+          const particleCount = 30;
+
+          for (let i = 0; i < particleCount; i++) {
+            const isFlower = i % 2 === 0; // Alternate between flowers and leaves
+
+            // Create particle (small colored sphere)
+            const particleGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+            const particleMaterial = new THREE.MeshStandardMaterial({
+              color: isFlower
+                ? [0xff69b4, 0xff1493, 0xffb6c1, 0xff6b9d][
+                    Math.floor(Math.random() * 4)
+                  ] // Pink flowers
+                : [0x90ee90, 0x32cd32, 0x98fb98, 0x00ff00][
+                    Math.floor(Math.random() * 4)
+                  ], // Green leaves
+              roughness: 0.7,
+              metalness: 0.2,
+            });
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+
+            // Position at Octocat location
+            particle.position.copy(dollPos);
+
+            // Random velocity for explosion effect
+            particle.userData.velocity = new THREE.Vector3(
+              (Math.random() - 0.5) * 0.4,
+              Math.random() * 0.5 + 0.3, // Upward velocity
+              (Math.random() - 0.5) * 0.4,
+            );
+            particle.userData.rotationSpeed = new THREE.Vector3(
+              (Math.random() - 0.5) * 0.2,
+              (Math.random() - 0.5) * 0.2,
+              (Math.random() - 0.5) * 0.2,
+            );
+            particle.userData.lifetime = 0;
+            particle.userData.maxLifetime = 3; // 3 seconds
+
+            scene.add(particle);
+            particlesRef.current.push(particle);
+          }
+
+          // Start countdown and redirect after 10 seconds
+          if (
+            selectedBuildingRef.current &&
+            selectedBuildingRef.current.userData.user
+          ) {
+            const user = selectedBuildingRef.current.userData.user;
+            const githubUrl = `https://github.com/${user.login}`;
+
+            // Store redirect URL
+            redirectUrlRef.current = githubUrl;
+
+            // Initialize countdown
+            countdownRef.current = 10;
+            updateClickMeText("⏱️ 10");
+
+            console.log("⏳ Starting 10 second countdown...");
+
+            // Start countdown
+            const countdownInterval = setInterval(() => {
+              countdownRef.current -= 1;
+
+              if (countdownRef.current > 0) {
+                updateClickMeText(`⏱️ ${countdownRef.current}`);
+                console.log(`⏰ Countdown: ${countdownRef.current}`);
+              } else {
+                // Countdown finished
+                clearInterval(countdownInterval);
+                updateClickMeText("🚀 GO!");
+                console.log("🚀 Opening GitHub profile now!");
+                window.open(redirectUrlRef.current, "_blank");
+
+                // Reset after a moment
+                setTimeout(() => {
+                  updateClickMeText("👆 CLICK ME");
+                  countdownRef.current = null;
+                  redirectUrlRef.current = null;
+                }, 1000);
+              }
+            }, 1000);
+          }
+          return;
+        }
+      }
 
       // Check if door button was clicked
       if (doorButtonRef.current && doorButtonRef.current.visible) {
@@ -731,6 +1015,149 @@ export default function GitHubTown() {
             );
           }
         }
+
+        // Animate human character - dynamic animations
+        if (building.userData.humanCharacter) {
+          const character = building.userData.humanCharacter;
+
+          // Dynamic breathing animation (body scale with variation)
+          const breathe = Math.sin(time * 2.5 + index * 0.5) * 0.03 + 1;
+          const breathePhase = Math.sin(time * 2 + index * 0.8) * 0.02;
+
+          // Gentle swaying with more variation
+          const sway = Math.sin(time * 1.2 + index * 0.3) * 0.08;
+          const tilt = Math.cos(time * 0.8 + index * 0.5) * 0.02;
+          character.rotation.y = character.userData.initialRotation + sway;
+          character.rotation.z = tilt;
+
+          // Subtle up-down bouncing motion
+          const bounce = Math.sin(time * 1.8 + index * 0.4) * 0.1;
+          character.position.y = bounce;
+
+          character.traverse((child) => {
+            if (child.isMesh) {
+              // Head bobbing animation (doubled)
+              if (
+                child.geometry.type === "SphereGeometry" &&
+                child.position.y > 4
+              ) {
+                child.position.y =
+                  4.2 + Math.sin(time * 2.2 + index * 0.6) * 0.1; // Doubled
+                // Head slight turn
+                child.rotation.y = Math.sin(time * 1.5 + index * 0.7) * 0.15;
+              }
+
+              // Body breathing (doubled)
+              if (
+                child.geometry.type === "CylinderGeometry" &&
+                child.position.y > 2 &&
+                child.position.y < 3
+              ) {
+                child.scale.y = breathe;
+                child.scale.x = 1 / Math.sqrt(breathe); // Maintain volume
+                child.scale.z = 1 / Math.sqrt(breathe);
+              }
+
+              // Arms swinging when not selected (idle pose, doubled)
+              if (!isSelected) {
+                if (
+                  child.position.x < -0.8 &&
+                  child.position.y > 2 &&
+                  child.position.y < 3
+                ) {
+                  // Left arm gentle swing
+                  child.rotation.z =
+                    Math.PI / 8 + Math.sin(time * 1.8 + index * 0.3) * 0.1;
+                  child.rotation.x = Math.sin(time * 2 + index * 0.2) * 0.08;
+                }
+                if (
+                  child.position.x > 0.8 &&
+                  child.position.y > 2 &&
+                  child.position.y < 3
+                ) {
+                  // Right arm gentle swing (opposite phase)
+                  child.rotation.z =
+                    -Math.PI / 8 -
+                    Math.sin(time * 1.8 + index * 0.3 + Math.PI) * 0.1;
+                  child.rotation.x =
+                    Math.sin(time * 2 + index * 0.2 + Math.PI) * 0.08;
+                }
+              }
+
+              // Legs subtle animation (doubled)
+              if (
+                child.geometry.type === "CylinderGeometry" &&
+                child.position.y < 2 &&
+                child.position.y > 0.6
+              ) {
+                if (child.position.x < 0) {
+                  // Left leg
+                  child.rotation.x = Math.sin(time * 1.5 + index * 0.4) * 0.03;
+                } else {
+                  // Right leg (opposite phase)
+                  child.rotation.x =
+                    Math.sin(time * 1.5 + index * 0.4 + Math.PI) * 0.03;
+                }
+              }
+            }
+          });
+
+          // Wave enthusiastically when building is selected
+          if (isSelected) {
+            const waveAngle = Math.sin(time * 5) * 0.8 + 0.4;
+            const shoulderRotate = Math.sin(time * 5) * 0.15;
+
+            character.traverse((child) => {
+              // Animate right arm to wave vigorously (doubled)
+              if (
+                child.isMesh &&
+                child.position.x > 0.8 &&
+                child.position.y > 2 &&
+                child.position.y < 3
+              ) {
+                child.rotation.z = -Math.PI / 8 + waveAngle;
+                child.rotation.x = shoulderRotate;
+              }
+              // Left arm also shows excitement (doubled)
+              if (
+                child.isMesh &&
+                child.position.x < -0.8 &&
+                child.position.y > 2 &&
+                child.position.y < 3
+              ) {
+                child.rotation.z = Math.PI / 8 + Math.sin(time * 4.5) * 0.2;
+              }
+            });
+          }
+        }
+      });
+
+      // Animate blast particles (flowers and leaves)
+      particlesRef.current.forEach((particle, index) => {
+        particle.userData.lifetime += 0.016; // ~60fps
+
+        // Apply gravity and velocity
+        particle.userData.velocity.y -= 0.015; // Gravity
+        particle.position.add(particle.userData.velocity);
+
+        // Rotate particle
+        particle.rotation.x += particle.userData.rotationSpeed.x;
+        particle.rotation.y += particle.userData.rotationSpeed.y;
+        particle.rotation.z += particle.userData.rotationSpeed.z;
+
+        // Fade out as lifetime increases
+        const lifetimeRatio =
+          particle.userData.lifetime / particle.userData.maxLifetime;
+        particle.material.opacity = 1 - lifetimeRatio;
+        particle.material.transparent = true;
+
+        // Remove old particles
+        if (particle.userData.lifetime >= particle.userData.maxLifetime) {
+          scene.remove(particle);
+          particle.geometry.dispose();
+          particle.material.dispose();
+          particlesRef.current.splice(index, 1);
+        }
       });
 
       // Update label positions to face camera
@@ -769,7 +1196,7 @@ export default function GitHubTown() {
 
         // Pulse animation for visibility
         const pulseScale = 1 + Math.sin(frameCount * 0.05) * 0.1;
-        doorButtonRef.current.scale.set(8 * pulseScale, 4 * pulseScale, 1);
+        doorButtonRef.current.scale.set(5 * pulseScale, 2.5 * pulseScale, 1);
       } else if (doorButtonRef.current) {
         doorButtonRef.current.visible = false;
         if (frameCount % 120 === 0 && showEnterPromptRef.current) {
@@ -778,6 +1205,98 @@ export default function GitHubTown() {
             hasBuilding: !!selectedBuildingRef.current,
             showEnterPrompt: showEnterPromptRef.current,
           });
+        }
+      }
+
+      // Update GitHub doll position (held by character, trying to escape)
+      if (githubDollRef.current && selectedBuildingRef.current) {
+        const building = selectedBuildingRef.current;
+        const character = building.userData.humanCharacter;
+
+        if (character) {
+          // Position doll to the FAR RIGHT side and IN FRONT of character
+          const dollPosition = new THREE.Vector3(
+            building.position.x + building.userData.geometry.width * 0.8, // Even further right
+            building.position.y + 3.5, // At character's chest/hand level
+            building.position.z + building.userData.geometry.depth / 2 + 3.5, // More in front of building
+          );
+
+          // Wiggle/escape animation - doll trying to run away!
+          const wiggleX = Math.sin(time * 8) * 0.4; // Fast side-to-side
+          const wiggleY = Math.sin(time * 6) * 0.25; // Up and down struggle
+          const wiggleRotation = Math.sin(time * 10) * 0.5; // Frantic rotation
+
+          githubDollRef.current.position.set(
+            dollPosition.x + wiggleX,
+            dollPosition.y + wiggleY,
+            dollPosition.z,
+          );
+
+          // Doll rotation - face camera but wiggle frantically
+          const cameraAngle = Math.atan2(
+            camera.position.x - dollPosition.x,
+            camera.position.z - dollPosition.z,
+          );
+          githubDollRef.current.rotation.y = cameraAngle + wiggleRotation;
+          githubDollRef.current.rotation.x = Math.sin(time * 7) * 0.2; // Tilting frantically
+          githubDollRef.current.rotation.z = Math.sin(time * 5) * 0.25; // Rolling side to side
+
+          // Animate tentacles flailing wildly
+          if (githubDollRef.current.userData.tentacles) {
+            githubDollRef.current.userData.tentacles.forEach(
+              (tentacle, idx) => {
+                // Each tentacle waves frantically
+                const wavePhase = time * 10 + idx * (Math.PI / 4);
+                const waveAmount = Math.sin(wavePhase) * 0.5;
+                tentacle.rotation.z =
+                  Math.PI / 6 + (idx * Math.PI) / 4 + waveAmount;
+                tentacle.rotation.x = Math.sin(wavePhase * 1.5) * 0.4;
+              },
+            );
+          }
+
+          // Scale pulsing - looks like doll is struggling harder!
+          const baseScale = 3.5; // Even larger and more visible!
+          const struggleScale = baseScale + Math.sin(time * 12) * 0.3;
+          githubDollRef.current.scale.set(
+            struggleScale,
+            struggleScale,
+            struggleScale,
+          );
+
+          githubDollRef.current.visible = true;
+
+          // Update "Click Me" text position above Octocat
+          if (clickMeTextRef.current) {
+            clickMeTextRef.current.position.set(
+              githubDollRef.current.position.x,
+              githubDollRef.current.position.y + 2.5, // Above Octocat
+              githubDollRef.current.position.z,
+            );
+            // Float animation for "Click Me" text
+            clickMeTextRef.current.position.y += Math.sin(time * 3) * 0.15;
+            clickMeTextRef.current.visible = true;
+          }
+
+          // Debug log once per second
+          if (frameCount % 60 === 0) {
+            console.log(
+              "🐙 Octocat at:",
+              githubDollRef.current.position,
+              "Character at:",
+              building.position,
+            );
+          }
+        } else {
+          githubDollRef.current.visible = false;
+          if (clickMeTextRef.current) {
+            clickMeTextRef.current.visible = false;
+          }
+        }
+      } else if (githubDollRef.current) {
+        githubDollRef.current.visible = false;
+        if (clickMeTextRef.current) {
+          clickMeTextRef.current.visible = false;
         }
       }
 
@@ -1345,6 +1864,140 @@ export default function GitHubTown() {
       const canopy = new THREE.Mesh(canopyGeometry, canopyMaterial);
       canopy.position.set(0, geometry.height * 0.22, geometry.depth / 2 + 1);
       buildingGroup.add(canopy);
+
+      // Create human character to represent the user
+      const createHumanCharacter = () => {
+        const humanGroup = new THREE.Group();
+
+        // Character colors based on building type for variety
+        const skinColors = [0xffdbac, 0xf1c27d, 0xe0ac69, 0xc68642];
+        const clothColors = [0x3b82f6, 0x10b981, 0x8b5cf6, 0xf59e0b, 0xef4444];
+        const skinColor = skinColors[index % skinColors.length];
+        const clothColor = clothColors[index % clothColors.length];
+
+        // Head (doubled size)
+        const headGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+        const headMaterial = new THREE.MeshStandardMaterial({
+          color: skinColor,
+          roughness: 0.8,
+          metalness: 0.1,
+        });
+        const head = new THREE.Mesh(headGeometry, headMaterial);
+        head.position.y = 4.2; // Doubled
+        head.castShadow = true;
+        humanGroup.add(head);
+
+        // Eyes (simple dots, doubled)
+        const eyeGeometry = new THREE.SphereGeometry(0.16, 8, 8);
+        const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        leftEye.position.set(-0.3, 4.3, 0.7); // Doubled
+        humanGroup.add(leftEye);
+        const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        rightEye.position.set(0.3, 4.3, 0.7); // Doubled
+        humanGroup.add(rightEye);
+
+        // Body (torso, doubled)
+        const bodyGeometry = new THREE.CylinderGeometry(0.7, 0.8, 2.4, 16);
+        const bodyMaterial = new THREE.MeshStandardMaterial({
+          color: clothColor,
+          roughness: 0.7,
+          metalness: 0.1,
+        });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.y = 2.4; // Doubled
+        body.castShadow = true;
+        humanGroup.add(body);
+
+        // Arms (doubled)
+        const armGeometry = new THREE.CylinderGeometry(0.24, 0.24, 1.8, 12);
+        const armMaterial = new THREE.MeshStandardMaterial({
+          color: clothColor,
+          roughness: 0.7,
+        });
+
+        const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+        leftArm.position.set(-1.0, 2.4, 0); // Doubled
+        leftArm.rotation.z = Math.PI / 8;
+        leftArm.castShadow = true;
+        humanGroup.add(leftArm);
+
+        const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+        rightArm.position.set(1.0, 2.4, 0); // Doubled
+        rightArm.rotation.z = -Math.PI / 8;
+        rightArm.castShadow = true;
+        humanGroup.add(rightArm);
+
+        // Hands (doubled)
+        const handGeometry = new THREE.SphereGeometry(0.3, 12, 12);
+        const handMaterial = new THREE.MeshStandardMaterial({
+          color: skinColor,
+        });
+
+        const leftHand = new THREE.Mesh(handGeometry, handMaterial);
+        leftHand.position.set(-1.1, 1.4, 0); // Doubled
+        leftHand.castShadow = true;
+        humanGroup.add(leftHand);
+
+        const rightHand = new THREE.Mesh(handGeometry, handMaterial);
+        rightHand.position.set(1.1, 1.4, 0); // Doubled
+        rightHand.castShadow = true;
+        humanGroup.add(rightHand);
+
+        // Legs (doubled)
+        const legGeometry = new THREE.CylinderGeometry(0.3, 0.28, 2.0, 12);
+        const legMaterial = new THREE.MeshStandardMaterial({
+          color: 0x2c3e50,
+          roughness: 0.8,
+        });
+
+        const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+        leftLeg.position.set(-0.36, 1.0, 0); // Doubled
+        leftLeg.castShadow = true;
+        humanGroup.add(leftLeg);
+
+        const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+        rightLeg.position.set(0.36, 1.0, 0); // Doubled
+        rightLeg.castShadow = true;
+        humanGroup.add(rightLeg);
+
+        // Feet (shoes, doubled)
+        const footGeometry = new THREE.BoxGeometry(0.4, 0.3, 0.7);
+        const footMaterial = new THREE.MeshStandardMaterial({
+          color: 0x1a1a1a,
+          roughness: 0.6,
+        });
+
+        const leftFoot = new THREE.Mesh(footGeometry, footMaterial);
+        leftFoot.position.set(-0.36, 0.16, 0.16); // Doubled
+        leftFoot.castShadow = true;
+        humanGroup.add(leftFoot);
+
+        const rightFoot = new THREE.Mesh(footGeometry, footMaterial);
+        rightFoot.position.set(0.36, 0.16, 0.16); // Doubled
+        rightFoot.castShadow = true;
+        humanGroup.add(rightFoot);
+
+        // Position character near the building entrance (to the side)
+        humanGroup.position.set(
+          geometry.width * 0.5,
+          0,
+          geometry.depth / 2 + 2.5,
+        );
+
+        // Make character face slightly outward
+        humanGroup.rotation.y = -Math.PI / 6;
+
+        // Store for animation
+        humanGroup.userData.isCharacter = true;
+        humanGroup.userData.initialRotation = humanGroup.rotation.y;
+
+        return humanGroup;
+      };
+
+      const humanChar = createHumanCharacter();
+      buildingGroup.add(humanChar);
+      buildingGroup.userData.humanCharacter = humanChar;
 
       // Base platform (sidewalk)
       const baseGeometry = new THREE.BoxGeometry(
